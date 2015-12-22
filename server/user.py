@@ -5,7 +5,8 @@ import access
 
 __author__ = 'HuPeng'
 
-class user:
+
+class User:
     uid = None
     name = None
     status = None
@@ -52,7 +53,3 @@ class user:
             while not access.have_id(uid):
                 uid = random.randint(0, sys.maxint)
             access.register(uid, info['name'], info['passwd'])
-
-
-
-
