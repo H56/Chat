@@ -5,12 +5,15 @@ import random
 import socket
 import logging
 from threading import Timer
+from client.getch import getch
+
 __author__ = 'hupeng'
 
 REGISTER = 0
 LOGIN = 1
 HEARTBEAT = 2
 LOGOUT = 3
+MESSAGE = 4
 
 
 class Client:
@@ -76,6 +79,19 @@ class Client:
         self.timer_show = Timer(0.05, self.show, ())
         self.timer_show.start()
 
+    def get_data(self):
+        while True:
+            ch = getch()
+            if ch == ' ':
+                self.timer_show.cancel()
+                msg = input('Message: ')
+                self.show()
+                self.send_to_server(MESSAGE, msg)
+            elif ch == '\3':
+                self.receive = False
+                break
+
+
     def client(self):
         print('1: Login\t 2: register')
         while True:
@@ -95,6 +111,9 @@ class Client:
         elif choice == 2:
             self.register()
         self.login()
+        # -----------input thread-----------
+        self.timer_show()
+        self.timer_heart()
         while self.receive:
             data = self.socket.recv(1024)
             self.message_queue.put(data + '\r\n')
