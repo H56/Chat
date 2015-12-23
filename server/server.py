@@ -1,47 +1,93 @@
-import socket, select
+import socket
+import select
 import Queue
+import logging
+import errno
 
 __author__ = 'HuPeng'
 
 
-class server:
-    def __init__(self):
-        pass
+class Server:
+    class Info:
+        def __init__(self, connection, address):
+            self.user = None
+            self.address = address
+            self.socket = connection
+            # personal message queues
+            self.message_queues = Queue.Queue()
 
-    def fun(self):
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server_address = ('localhost', 8080)
-        server_socket.bind(server_address)
-        server_socket.listen(1)
-        server_socket.setblocking(0)
-        timeout = 10
-        epoll = select.epoll()
-        epoll.register(server_socket.fileno(), select.EPOLLIN)
-        message_queues = {}
+    def __init__(self, addr, port, timeout=-1):
+        self.logger = logging.getLogger('Chat-Server')
+        log_file = logging.FileHandler('Chat-Server.log')
+        log_file.setLevel(logging.DEBUG)
+        log_stream = logging.StreamHandler()
+        log_stream.setLevel(logging.ERROR)
+        formatter = logging.Formatter('%(asctime)s-%(name)s-%(levelname)s-%(message)s')
+        log_stream.setFormatter(formatter)
+        log_file.setFormatter(formatter)
+        self.logger.addHandler(log_file)
+        self.logger.addHandler(log_stream)
 
-        fd_to_socket = {server_socket.fileno(): server_socket, }
+        self.address = (addr, port)
+        self.timeout = timeout
+
+    def server_thread(self):
+        try:
+            listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            listen_socket.bind(self.address)
+            listen_socket.listen(5)
+            listen_socket.setblocking(0)
+        except socket.error, msg:
+            self.logger.error('socket error: ' + str(msg))
+
+        try:
+            epoll = select.epoll()
+            epoll.register(listen_socket.fileno(), select.EPOLLIN)
+        except select.error, msg:
+            self.logger.error('select error: ' + str(msg))
+
+        fd_to_info = {listen_socket.fileno(): self.Info(listen_socket, self.address), }
         while True:
-            events = epoll.poll(timeout)
+            events = epoll.poll(self.timeout)
             if not events:
                 continue
             for fd, event in events:
-                client_socket = fd_to_socket[fd]
+                client_socket = fd_to_info[fd].socket
                 if event & select.EPOLLIN:
-                    if client_socket == server_socket:
-                        connection, address = server_socket.accept()
+                    if client_socket == listen_socket:
+                        connection, address = listen_socket.accept()
                         connection.setblocking(0)
-                        epoll.register(connection.fileno(), select.EPOLLIN)
-                        fd_to_socket[connection.fileno()] = connection
-                        message_queues[connection] = Queue.Queue()
+                        epoll.register(connection.fileno(), select.EPOLLIN | select.EPOLLET)
+                        fd_to_info[connection.fileno()] = self.Info(connection, address)
                     else:
-                        data = client_socket.recv(1024)
-                        if data:
-                            message_queues[client_socket].put(data)
-                            epoll.modify(fd, select.EPOLLOUT)
+                        # data may be very long
+                        all_data = ''
+                        while True:
+                            try:
+                                data = client_socket.recv(1024)
+                                if not data and not all_data:
+                                    epoll.unregister(fd)
+                                    client_socket.close()
+                                    self.logger.debug('%s, %d closed' % (fd_to_info[fd].address[0],
+                                                                         fd_to_info[fd].address[1]))
+                                    break
+                                else:
+                                    all_data += data
+                            except socket.error, msg:
+                                if msg.errno == errno.EAGAIN:
+                                    self.logger.debug('%s receive %s' % (str(fd_to_info[fd].address), all_data))
+                                    # ----------process the data-----------
+                                    self.parse_data(all_data, fd_to_info, fd)
+                                    epoll.modify(fd, select.EPOLLET | select.EPOLLOUT)
+                                else:
+                                    epoll.unregister(fd)
+                                    client_socket.close()
+                                    self.logger.error('receive data error, socket error: ' + str(msg))
+                                break
                 elif event & select.EPOLLOUT:
                     try:
-                        msg = message_queues[client_socket].get_nowait()
+                        msg = fd_to_info[fd].message_queues.get_nowait()
                     except Queue.Empty:
                         print client_socket.getpeername(), " queue empty"
                         epoll.modify(fd, select.EPOLLIN)
@@ -49,10 +95,15 @@ class server:
                         client_socket.send(msg)
                 elif event & select.EPOLLHUP:
                     epoll.unregister(fd)
-                    fd_to_socket[fd].close()
-                    del fd_to_socket[fd]
-        epoll.unregister(server_socket.fileno())
+                    fd_to_info[fd].socket.close()
+                    del fd_to_info[fd]
+        epoll.unregister(listen_socket.fileno())
         epoll.close()
-        server_socket.close()
-ser = server()
+        listen_socket.close()
+
+    def parse_data(self, data, fd_to_info, fd):
+        pass
+
+
+ser = Server()
 ser.fun()
