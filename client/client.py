@@ -1,10 +1,10 @@
+import Queue
 import getpass
 import hashlib
 import random
 import socket
 import logging
-import threading
-
+from threading import Timer
 __author__ = 'hupeng'
 
 REGISTER = 0
@@ -33,6 +33,7 @@ class Client:
         self.address = address
         self.server_address = server_address
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.message_queue = Queue.Queue()
 
         if self.address[1] == -1:
             self.address[1] = random.randint(49152, 65535)
@@ -53,25 +54,58 @@ class Client:
                 self.logger.error('socket bind error: ' + str(e))
                 raise e
         self.UserName = None
-        self.timer = None
+        self.timer_heart = None
+        self.timer_show = None
+        self.receive = True
 
     def __del__(self):
         self.socket.close()
+        if self.timer_heart is not None:
+            self.timer_heart.cancel()
+        if self.timer_show is not None:
+            self.timer_show.cancel()
 
     def heartbeat(self):
         self.send_to_server(HEARTBEAT, '')
-        self.timer = threading.Timer(1, self.heartbeat, ()).start()
+        self.timer_heart = Timer(1, self.heartbeat, ())
+        self.timer_heart.start()
+
+    def show(self):
+        while self.message_queue.empty():
+            print(self.message_queue.get())
+        self.timer_show = Timer(0.05, self.show, ())
+        self.timer_show.start()
 
     def client(self):
+        print('1: Login\t 2: register')
         while True:
-            print('1: Login\t 2: register')
+            choice = raw_input('Please choose the action number:')
+            try:
+                choice_num = int(choice)
+            except Exception as e:
+                self.logger.error('choice error: ' + str(e))
+                print('Please input the right number.')
+            else:
+                if 0 <= choice < 3:
+                   break
+                else:
+                    print('Please input the right number.')
+        if choice == 1:
+            self.logger()
+        elif choice == 2:
+            self.register()
+        self.login()
+        while self.receive:
+            data = self.socket.recv(1024)
+            self.message_queue.put(data + '\r\n')
+
 
     def register(self):
         while True:
             self.UserName = raw_input('User Name: ')
             self.send_to_server(REGISTER, str(self.UserName))
             data = self.socket.recv(1024)
-            mid = data.split('\1')
+            mid = data.find('\1')
             if int(data[0: mid]) == REGISTER and int(data[mid: -1]) != 0:
                 break
         password = getpass.getpass()
