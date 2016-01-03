@@ -1,11 +1,11 @@
 import Queue
+import threading
 import getpass
 import hashlib
-import random
 import socket
 import logging
 from threading import Timer
-from client.getch import getch
+import getch
 
 __author__ = 'hupeng'
 
@@ -16,8 +16,8 @@ LOGOUT = 3
 MESSAGE = 4
 
 
-class Client:
-    def __init__(self, address=('localhost', -1), server_address=('localhost', '21313')):
+class Client(threading.Thread):
+    def __init__(self, server_address=('localhost', '21313')):
         """
         :type server_port: int
         :type server_address: str
@@ -33,45 +33,19 @@ class Client:
         self.logger.addHandler(log_file)
         self.logger.addHandler(log_stream)
 
-        self.address = address
         self.server_address = server_address
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.message_queue = Queue.Queue()
-
-        if self.address[1] == -1:
-            self.address[1] = random.randint(49152, 65535)
-            while True:
-                try:
-                    self.socket.bind(self.address)
-                except socket.error as e:
-                    if e.errno == 98:
-                        continue
-                    self.logger.error('socket bind error: ' + str(e))
-                    raise e
-                else:
-                    break
-        else:
-            try:
-                self.socket.bind(self.address)
-            except socket.error as e:
-                self.logger.error('socket bind error: ' + str(e))
-                raise e
+        self.socket.connect(self.server_address)
         self.UserName = None
-        self.timer_heart = None
-        self.timer_show = None
         self.receive = True
+
+        self.timer_show = None
 
     def __del__(self):
         self.socket.close()
-        if self.timer_heart is not None:
-            self.timer_heart.cancel()
         if self.timer_show is not None:
             self.timer_show.cancel()
-
-    def heartbeat(self):
-        self.send_to_server(HEARTBEAT, '')
-        self.timer_heart = Timer(1, self.heartbeat, ())
-        self.timer_heart.start()
 
     def show(self):
         while self.message_queue.empty():
@@ -91,8 +65,7 @@ class Client:
                 self.receive = False
                 break
 
-
-    def client(self):
+    def run(self):
         print('1: Login\t 2: register')
         while True:
             choice = raw_input('Please choose the action number:')
@@ -103,21 +76,19 @@ class Client:
                 print('Please input the right number.')
             else:
                 if 0 <= choice < 3:
-                   break
+                    break
                 else:
                     print('Please input the right number.')
-        if choice == 1:
-            self.logger()
-        elif choice == 2:
+        if choice_num == 1:
+            self.login()
+        elif choice_num == 2:
             self.register()
         self.login()
         # -----------input thread-----------
         self.timer_show()
-        self.timer_heart()
         while self.receive:
             data = self.socket.recv(1024)
             self.message_queue.put(data + '\r\n')
-
 
     def register(self):
         while True:
@@ -152,3 +123,12 @@ class Client:
         elif method == LOGOUT:
             self.socket.sendto(str(method) + '\1' + msg)
 
+
+def main():
+    client = Client()
+    client.start()
+    client.get_data()
+
+
+if __name__ == '__main__':
+    main()

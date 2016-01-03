@@ -3,6 +3,7 @@ import select
 import Queue
 import logging
 import errno
+import sqlite3
 
 __author__ = 'HuPeng'
 
