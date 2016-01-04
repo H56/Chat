@@ -5,17 +5,17 @@ import sqlite3
 
 __author__ = 'HuPeng'
 
-mutex = threading.Lock()
+mutex_access = threading.Lock()
 
 
 class AccessDao:
     def __new__(cls, *args, **kwargs):
-        global mutex
-        mutex.acquire()
+        global mutex_access
+        mutex_access.acquire()
         if not hasattr(cls, '_instance'):
             orig = super(AccessDao, cls)
             cls._instance = orig.__new__(cls, *args, **kwargs)
-        mutex.release()
+        mutex_access.release()
         return cls._instance
 
     def __init__(self):

@@ -1,12 +1,33 @@
+import hashlib
 import socket
 import select
 import Queue
 import logging
 import errno
-import sqlite3
+import access
 
 __author__ = 'HuPeng'
 
+REGISTER = 10
+LOGIN = 11
+LOGOUT = 12
+
+SENDALL = 20
+SENDTO = 21
+SENDROOM = 22
+
+ENTERHALL = 30
+ENTERROOM = 31
+
+HALL = 40
+ROOM = 41
+
+HAVENAME = 50
+NAMEOK = 51
+FAILED = 52
+SUCCESS = 53
+HAVENONAME = 54
+WRONGPASSWD = 55
 
 class Server:
     class Info:
@@ -31,6 +52,8 @@ class Server:
 
         self.address = (addr, port)
         self.timeout = timeout
+        self.epoll = None
+        self.access = access.AccessDao()
 
     def server_thread(self):
         try:
@@ -43,14 +66,14 @@ class Server:
             self.logger.error('socket error: ' + str(msg))
 
         try:
-            epoll = select.epoll()
-            epoll.register(listen_socket.fileno(), select.EPOLLIN)
+            self.epoll = select.epoll()
+            self.epoll.register(listen_socket.fileno(), select.EPOLLIN)
         except select.error, msg:
             self.logger.error('select error: ' + str(msg))
 
         fd_to_info = {listen_socket.fileno(): self.Info(listen_socket, self.address), }
         while True:
-            events = epoll.poll(self.timeout)
+            events = self.epoll.poll(self.timeout)
             if not events:
                 continue
             for fd, event in events:
@@ -59,7 +82,7 @@ class Server:
                     if client_socket == listen_socket:
                         connection, address = listen_socket.accept()
                         connection.setblocking(0)
-                        epoll.register(connection.fileno(), select.EPOLLIN | select.EPOLLET)
+                        self.epoll.register(connection.fileno(), select.EPOLLIN | select.EPOLLET)
                         fd_to_info[connection.fileno()] = self.Info(connection, address)
                     else:
                         # data may be very long
@@ -68,7 +91,7 @@ class Server:
                             try:
                                 data = client_socket.recv(1024)
                                 if not data and not all_data:
-                                    epoll.unregister(fd)
+                                    self.epoll.unregister(fd)
                                     client_socket.close()
                                     self.logger.debug('%s, %d closed' % (fd_to_info[fd].address[0],
                                                                          fd_to_info[fd].address[1]))
@@ -80,9 +103,9 @@ class Server:
                                     self.logger.debug('%s receive %s' % (str(fd_to_info[fd].address), all_data))
                                     # ----------process the data-----------
                                     self.parse_data(all_data, fd_to_info, fd)
-                                    epoll.modify(fd, select.EPOLLET | select.EPOLLOUT)
+                                    self.epoll.modify(fd, select.EPOLLET | select.EPOLLOUT)
                                 else:
-                                    epoll.unregister(fd)
+                                    self.epoll.unregister(fd)
                                     client_socket.close()
                                     self.logger.error('receive data error, socket error: ' + str(msg))
                                 break
@@ -91,19 +114,38 @@ class Server:
                         msg = fd_to_info[fd].message_queues.get_nowait()
                     except Queue.Empty:
                         print client_socket.getpeername(), " queue empty"
-                        epoll.modify(fd, select.EPOLLIN)
+                        self.epoll.modify(fd, select.EPOLLIN)
                     else:
                         client_socket.send(msg)
                 elif event & select.EPOLLHUP:
-                    epoll.unregister(fd)
+                    self.epoll.unregister(fd)
                     fd_to_info[fd].socket.close()
                     del fd_to_info[fd]
-        epoll.unregister(listen_socket.fileno())
-        epoll.close()
+        self.epoll.unregister(listen_socket.fileno())
+        self.epoll.close()
         listen_socket.close()
 
     def parse_data(self, data, fd_to_info, fd):
-        pass
+        end = data.find('\1')
+        start = 0
+        method = int(data[start: end])
+        if method == REGISTER:
+            start = end + 1
+            end = data.find('\1', start)
+            if end != -1 and end < len(data):
+                uname = data[start, end]
+                start = end + 1
+                end = data.find('\1', start)
+                passwd = data[start: end]
+                self.access.register(uname, uname, passwd)
+                fd_to_info[fd].socket.send(chr(method) + '\1' + str(int(True)))
+            else:
+                uname = data[start, end]
+                fd_to_info[fd].socket.send(chr(method) + '\1' + str(int(self.access.have_id(uname))))
+        elif method == LOGIN:
+            start = end
+        elif method == LOGOUT:
+            pass
 
 
 ser = Server()
