@@ -129,21 +129,43 @@ class Server:
         end = data.find('\1')
         start = 0
         method = int(data[start: end])
-        if method == REGISTER:
+        if method == SENDALL:
+            pass
+        elif method == SENDROOM:
+            pass
+        elif method == SENDTO:
+            pass
+        elif method == REGISTER:
             start = end + 1
             end = data.find('\1', start)
+            uname = data[start: end]
             if end != -1 and end < len(data):
-                uname = data[start, end]
                 start = end + 1
                 end = data.find('\1', start)
                 passwd = data[start: end]
-                self.access.register(uname, uname, passwd)
-                fd_to_info[fd].socket.send(chr(method) + '\1' + str(int(True)))
+                status = self.access.register(uname, uname, passwd)
+                if status:
+                    fd_to_info[fd].socket.send(chr(method) + '\1' + chr(SUCCESS))
+                else:
+                    fd_to_info[fd].socket.send(chr(method) + '\1' + chr(FAILED))
             else:
-                uname = data[start, end]
-                fd_to_info[fd].socket.send(chr(method) + '\1' + str(int(self.access.have_id(uname))))
+                status = self.access.have_id(uname)
+                if status:
+                    fd_to_info[fd].socket.send(chr(method) + '\1' + chr(HAVENAME))
+                else:
+                    fd_to_info[fd].socket.send(chr(method) + '\1' + chr(NAMEOK))
         elif method == LOGIN:
-            start = end
+            start = end + 1
+            end = data.find('\1', start)
+            uname = data[start: end]
+            passwd = data[end + 1: -1]
+            status = self.access.is_legal(uname, passwd)
+            if status == 1:
+                fd_to_info[fd].socket.send(chr(method) + '\1' + chr(SUCCESS))
+            elif status == -1:
+                fd_to_info[fd].socket.send(chr(method) + '\1' + chr(HAVENONAME))
+            else:
+                fd_to_info[fd].socket.send(chr(method) + '\1' + chr(WRONGPASSWD))
         elif method == LOGOUT:
             pass
 

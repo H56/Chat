@@ -7,7 +7,6 @@ __author__ = 'HuPeng'
 
 mutex_access = threading.Lock()
 
-
 class AccessDao:
     def __new__(cls, *args, **kwargs):
         global mutex_access
@@ -33,9 +32,21 @@ class AccessDao:
         self.conn = sqlite3.connect("Chat_Hu.db")
 
     def is_legal(self, uid, upasswd):
+        '''
+        the uid and upasswd is legal
+        :param uid: name
+        :param upasswd: password
+        :return: -1: no user, 1: ok, 0: wrong passwd
+        '''
         sql = 'SELECT passwd FROM chat_user WHERE uid = ?'
         passwd = self.select_sql(sql, uid)
-        return hashlib.sha1(upasswd).hexdigest() == passwd[0]
+        if passwd is None or len(passwd) == 0:
+            return -1
+        elif hashlib.sha1(upasswd).hexdigest() == passwd[0]:
+            return 1
+        else:
+            return 0
+        return
 
     def get_pre_login_time(self, uid):
         pass
