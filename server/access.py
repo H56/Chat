@@ -1,21 +1,13 @@
 import hashlib
 import logging
-import threading
 import sqlite3
+from singleton import *
 
 __author__ = 'HuPeng'
 
-mutex_access = threading.Lock()
 
+@singleton
 class AccessDao:
-    def __new__(cls, *args, **kwargs):
-        global mutex_access
-        mutex_access.acquire()
-        if not hasattr(cls, '_instance'):
-            orig = super(AccessDao, cls)
-            cls._instance = orig.__new__(cls, *args, **kwargs)
-        mutex_access.release()
-        return cls._instance
 
     def __init__(self):
         self.logger = logging.getLogger('Chat-Server-Access')
@@ -30,6 +22,8 @@ class AccessDao:
         self.logger.addHandler(log_stream)
 
         self.conn = sqlite3.connect("Chat_Hu.db")
+        self.test_table()
+        print('init')
 
     def is_legal(self, uid, upasswd):
         '''
@@ -56,8 +50,13 @@ class AccessDao:
         uname = self.select_sql(sql, uid)
         return uname[0]
 
+    def get_rooms(self):
+        return {}
+
     def logout(self, uid, data):
-        pass
+        sql = u'''INSERT INTO logging_info(uid, login, logout) value(?, ?, ?)'''
+        data = (uid, data[0], data[1])
+        self.change_sql(sql, data)
 
     def register(self, uid, uname, upasswd):
         if not self.have_id(uid):
@@ -99,22 +98,29 @@ class AccessDao:
 
     def test_table(self):
         # user
-        self.__test__(u'chat_user',
+        status = self.__test__(u'chat_user',
                       u'''CREATE TABLE chat_user(uid VARCHAR(30) PRIMARY KEY, uname VARCHAR(100), passwd CHAR(40))''')
+        if not status:
+            self.conn.execute("")
 
         # login and logout info
         self.__test__(u'logging_info', u'''CREATE TABLE logging_info(id INTEGER PRIMARY KEY, uid VARCHAR(30), '''
                                        u'''login FLOAT, logout FLOAT)''')
 
+        #
+
     def __test__(self, table, exe):
         try:
-            self.con.execute("SELECT * FROM " + table)
+            self.conn.execute("SELECT * FROM " + table)
         except Exception as e:
             self.logger.info('no' + table + ' table: ' + str(e))
             self.logger.info('======add ' + table + ' table: start======')
             try:
-                self.con.execute(exe)
+                self.conn.execute(exe)
             except Exception as e:
                 self.logger.error("create ' + table + ' table error: " + str(e))
                 exit(-1)
             self.logger.info('======add ' + table + ' table: end======')
+            return False
+        else:
+            return True

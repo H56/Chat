@@ -1,1 +1,11 @@
 2015-12-23 16:25:53,765-Chat-Client-ERROR-socket bin error: [Errno 22] Invalid argument
+2016-01-05 17:34:07,623-Chat-Client-ERROR-choice error: invalid literal for int() with base 10: ''
+2016-01-05 17:34:11,744-Chat-Client-ERROR-choice error: invalid literal for int() with base 10: ''
+2016-01-05 17:34:27,631-Chat-Client-ERROR-choice error: invalid literal for int() with base 10: ''
+2016-01-05 17:34:28,439-Chat-Client-ERROR-choice error: invalid literal for int() with base 10: ''
+2016-01-05 17:34:29,247-Chat-Client-ERROR-choice error: invalid literal for int() with base 10: ''
+2016-01-05 17:35:16,135-Chat-Client-ERROR-choice error: invalid literal for int() with base 10: ''
+2016-01-05 17:35:47,167-Chat-Client-ERROR-choice error: invalid literal for int() with base 10: ''
+2016-01-05 17:38:37,622-Chat-Client-ERROR-choice error: invalid literal for int() with base 10: ''
+2016-01-05 17:38:39,821-Chat-Client-ERROR-choice error: invalid literal for int() with base 10: ''
+2016-01-05 17:38:43,157-Chat-Client-ERROR-choice error: invalid literal for int() with base 10: ''

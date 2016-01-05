@@ -4,7 +4,6 @@ import getpass
 import hashlib
 import socket
 import logging
-from threading import Timer
 import getch
 
 __author__ = 'hupeng'
@@ -30,12 +29,14 @@ SUCCESS = 53
 HAVENONAME = 54
 WRONGPASSWD = 55
 
+
 class Client(threading.Thread):
-    def __init__(self, server_address=('localhost', '21313')):
+    def __init__(self, server_address=('localhost', 21313)):
         """
         :type server_port: int
         :type server_address: str
         """
+        threading.Thread.__init__(self)
         self.logger = logging.getLogger('Chat-Client')
         log_file = logging.FileHandler('Chat-Client.log')
         log_file.setLevel(logging.DEBUG)
@@ -63,9 +64,9 @@ class Client(threading.Thread):
             self.timer_show.cancel()
 
     def show(self):
-        while self.message_queue.empty():
+        while not self.message_queue.empty():
             print(self.message_queue.get())
-        self.timer_show = Timer(0.05, self.show, ())
+        self.timer_show = threading.Timer(0.05, self.show, ())
         self.timer_show.start()
 
     def get_data(self):
@@ -98,7 +99,6 @@ class Client(threading.Thread):
                     else:
                         self.send_to_server(ENTERROOM, room)
 
-
             elif ch == '\3':
                 self.receive = False
                 break
@@ -111,9 +111,13 @@ class Client(threading.Thread):
                 choice_num = int(choice)
             except Exception as e:
                 self.logger.error('choice error: ' + str(e))
+                print(choice)
+                if choice == '\3':
+                    self.receive = False
+                    return
                 print('Please input the right number.')
             else:
-                if 0 <= choice < 3:
+                if 0 <= choice_num < 3:
                     break
                 else:
                     print('Please input the right number.')
@@ -121,9 +125,6 @@ class Client(threading.Thread):
             self.login()
         elif choice_num == 2:
             self.register()
-        self.login()
-        # -----------input thread-----------
-        self.timer_show()
         # data = ''
         while self.receive:
             data = self.socket.recv(1024)
@@ -132,11 +133,11 @@ class Client(threading.Thread):
 
     def sparse_data(self, data):
         start = 0
-        end = data.find('\1', start)
+        end = data.find(u'\1', start)
         operation = data[start: end]
         if operation == REGISTER:
             start = end + 1
-            end = data.find('\1', start)
+            end = data.find(u'\1', start)
             status = data[start: end]
             if status == chr(HAVENAME):
                 print('This name has been used, please rename your account!')
@@ -148,15 +149,20 @@ class Client(threading.Thread):
                 self.register(0)
             elif status == chr(SUCCESS):
                 print('Congratulation! Registration successful!')
+                print('Please login your account!')
+                self.login()
             else:
                 print('Unknown reason made the register failed, please re-register!')
                 self.register(0)
         elif operation == LOGIN:
             start = end + 1
-            end = data.find('\1', start)
+            end = data.find(u'\1', start)
             status = data[start: end]
             if status == SUCCESS:
                 print('Congratulation! login is successful!')
+                print('Press blank key to input data!')
+                # -----------input thread-----------
+                self.show()
             if status == WRONGPASSWD or status == HAVENONAME:
                 print('Username or passwd is not correct!')
             elif status == FAILED:
@@ -165,27 +171,28 @@ class Client(threading.Thread):
                 print('Unknown reason made the register failed, please re-register!')
         elif SENDALL:
             start = end + 1
-            end = data.find('\1', start)
+            end = data.find(u'\1', start)
             user = data[start: end]
-            self.message_queue.put('[HALL]' + user + 'said: ' + data[end + 1: -1] + '\r\n')
+            self.message_queue.put('[HALL]' + user + 'said: ' + data[end + 1: -1] + u'\r\n')
         elif SENDROOM:
             start = end + 1
-            end = data.find('\1', start)
+            end = data.find(u'\1', start)
             room = data[start: end]
             start = end + 1
-            end = data.find('\1', start)
+            end = data.find(u'\1', start)
             user = data[start: end]
-            self.message_queue.put('[ROOM:' + room + ']' + user +'said: ' + data[end + 1: -1] + '\r\n')
+            self.message_queue.put('[ROOM:' + room + ']' + user + 'said: ' + data[end + 1: -1] + u'\r\n')
         elif SENDTO:
             start = end + 1
-            end = data.find('\1', start)
+            end = data.find(u'\1', start)
             user = data[start: end]
-            self.message_queue.put(user + 'said: ' + data[end + 1: -1] + '\r\n')
+            self.message_queue.put(user + 'said: ' + data[end + 1: -1] + u'\r\n')
         elif operation == LOGOUT:
             pass
 
     def register(self, step=0):
         if step == 0:
+            print('fuck!')
             self.UserName = raw_input('User Name: ')
             self.send_to_server(REGISTER, str(self.UserName))
         elif step == 1:
@@ -206,9 +213,10 @@ class Client(threading.Thread):
 
     def send_to_server(self, method, *msg):
         send = chr(method)
+        print('send:' + str(msg))
         for s in msg:
-            send += '\1' + s
-        self.socket.sendto(send)
+            send += u'\1' + s
+        self.socket.send(send)
 
     @staticmethod
     def get_word(s, start=0):
@@ -223,10 +231,10 @@ class Client(threading.Thread):
             end += 1
         return s[begin: end], end
 
+
 def main():
     client = Client()
     client.start()
-    client.get_data()
 
 
 if __name__ == '__main__':
