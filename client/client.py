@@ -1,12 +1,15 @@
 import Queue
+from duplicity.asyncscheduler import thread
 import threading
 import getpass
 import hashlib
 import socket
 import logging
-import getch
+from getch import getch
 
 __author__ = 'hupeng'
+
+BUFFERSIZE = 1024
 
 REGISTER = 10
 LOGIN = 11
@@ -29,6 +32,8 @@ SUCCESS = 53
 HAVENONAME = 54
 WRONGPASSWD = 55
 
+def test(client):
+    print('test fuck!')
 
 class Client(threading.Thread):
     def __init__(self, server_address=('localhost', 21313)):
@@ -49,14 +54,16 @@ class Client(threading.Thread):
         self.logger.addHandler(log_stream)
 
         self.server_address = server_address
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.message_queue = Queue.Queue()
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect(self.server_address)
+        self.message_queue = Queue.Queue()
         self.UserName = None
         self.receive = True
 
         self.timer_show = None
+        self.timer_input = None
         self.default = HALL
+        self.starter = None
 
     def __del__(self):
         self.socket.close()
@@ -65,7 +72,7 @@ class Client(threading.Thread):
 
     def show(self):
         while not self.message_queue.empty():
-            print(self.message_queue.get())
+            print(self.message_queue.get_nowait())
         self.timer_show = threading.Timer(0.05, self.show, ())
         self.timer_show.start()
 
@@ -74,33 +81,36 @@ class Client(threading.Thread):
             ch = getch()
             if ch == ' ':
                 self.timer_show.cancel()
-                msg = input('->')
+                msg = raw_input('->')
                 self.show()
                 end = 0
                 operation, end = self.get_word(msg, end)
                 if operation == 'sendall':
-                    self.send_to_server(SENDALL, msg[end: -1])
+                    self.send_to_server(SENDALL, msg[end: len(msg)])
                 elif operation == 'sendto':
-                    user = self.get_word(msg, end)
+                    user, end = self.get_word(msg, end)
                     if end >= len(msg):
                         print('''user name or message can't be empty!''')
                     else:
-                        self.send_to_server(SENDTO, user, msg[end: -1])
+                        self.send_to_server(SENDTO, user, msg[end: len(msg)])
                 elif operation == 'sendroom':
                     room = self.get_word(msg, end)
                     if end >= len(msg):
                         print('''room or message can't be empty!''')
                     else:
-                        self.send_to_server(SENDROOM, room, msg[end: -1])
+                        self.send_to_server(SENDROOM, room, msg[end: len(msg)])
                 elif operation == 'enter':
-                    room = self.get_word(msg, end)
+                    room, end = self.get_word(msg, end)
                     if room == 'hall':
                         self.send_to_server(ENTERHALL)
                     else:
                         self.send_to_server(ENTERROOM, room)
+                else:
+                    print('''no the operation: ''' + operation)
 
             elif ch == '\3':
                 self.receive = False
+                self.timer_show.cancel
                 break
 
     def run(self):
@@ -127,27 +137,38 @@ class Client(threading.Thread):
             self.register()
         # data = ''
         while self.receive:
-            data = self.socket.recv(1024)
+            data = self.socket.recv(BUFFERSIZE)
             # self.message_queue.put(data + '\r\n')
-            self.sparse_data(data)
+            if not data:
+                break
+            else:
+                self.sparse_data(data)
 
     def sparse_data(self, data):
         start = 0
         end = data.find(u'\1', start)
-        operation = data[start: end]
+        if end == -1:
+            self.logger.error(u'''server's operation error!''')
+            return
+        operation = ord(data[start: end])
         if operation == REGISTER:
             start = end + 1
             end = data.find(u'\1', start)
-            status = data[start: end]
-            if status == chr(HAVENAME):
+            if end == -1:
+                end = len(data)
+            if start == end:
+                self.logger.error(u'''server's operation error!''')
+                return
+            status = ord(data[start: end])
+            if status == HAVENAME:
                 print('This name has been used, please rename your account!')
                 self.register(0)
-            elif status == chr(NAMEOK):
+            elif status == NAMEOK:
                 self.register(1)
-            elif status == chr(FAILED):
+            elif status == FAILED:
                 print('Unknown reason made the register failed, please re-register!')
                 self.register(0)
-            elif status == chr(SUCCESS):
+            elif status == SUCCESS:
                 print('Congratulation! Registration successful!')
                 print('Please login your account!')
                 self.login()
@@ -157,44 +178,75 @@ class Client(threading.Thread):
         elif operation == LOGIN:
             start = end + 1
             end = data.find(u'\1', start)
-            status = data[start: end]
+            if end == -1:
+                end = len(data)
+            if start == end:
+                self.logger.error(u'''server's operation error!''')
+                return
+            status = ord(data[start: end])
             if status == SUCCESS:
                 print('Congratulation! login is successful!')
                 print('Press blank key to input data!')
                 # -----------input thread-----------
+                # self.starter = thread.start_new_thread(self.timer_starter, (self, ))
                 self.show()
-            if status == WRONGPASSWD or status == HAVENONAME:
+                self.timer_input = threading.Timer(0.05, self.get_data, ())
+                self.timer_input.start()
+            elif status == WRONGPASSWD or status == HAVENONAME:
                 print('Username or passwd is not correct!')
+                self.login()
             elif status == FAILED:
-                print('Unknown reason made the register failed, please re-register!')
+                print('Unknown reason made the register failed, please re-login!')
+                self.login()
             else:
-                print('Unknown reason made the register failed, please re-register!')
+                print('Unknown reason made the register failed, please re-login!')
+                self.login()
         elif SENDALL:
             start = end + 1
             end = data.find(u'\1', start)
+            if end == -1:
+                end = len(data)
+            if start == end:
+                self.logger.error(u'''server's operation error!''')
+                return
             user = data[start: end]
-            self.message_queue.put('[HALL]' + user + 'said: ' + data[end + 1: -1] + u'\r\n')
+            self.message_queue.put('[HALL] ' + user + ' said: ' + data[end + 1: len(data)] + '\r\n')
         elif SENDROOM:
             start = end + 1
             end = data.find(u'\1', start)
+            if end == -1:
+                end = len(data)
+            if start == end:
+                self.logger.error(u'''server's operation error!''')
+                return
             room = data[start: end]
             start = end + 1
             end = data.find(u'\1', start)
+            if end == -1:
+                end = len(data)
+            if start == end:
+                self.logger.error(u'''server's operation error!''')
+                return
             user = data[start: end]
-            self.message_queue.put('[ROOM:' + room + ']' + user + 'said: ' + data[end + 1: -1] + u'\r\n')
+            self.message_queue.put('[ROOM:' + room + ']' + user + 'said: ' + data[end + 1: len(data)] + u'\r\n')
         elif SENDTO:
             start = end + 1
             end = data.find(u'\1', start)
+            if end == -1:
+                end = len(data)
+            if start == end:
+                self.logger.error(u'''server's operation error!''')
+                return
             user = data[start: end]
-            self.message_queue.put(user + 'said: ' + data[end + 1: -1] + u'\r\n')
+            self.message_queue.put(user + 'said: ' + data[end + 1: len(data)] + u'\r\n')
         elif operation == LOGOUT:
             pass
 
     def register(self, step=0):
         if step == 0:
-            print('fuck!')
             self.UserName = raw_input('User Name: ')
-            self.send_to_server(REGISTER, str(self.UserName))
+            if self.send_to_server(REGISTER, str(self.UserName)) < len(self.UserName):
+                self.logger.error('REGISTER: set code error.')
         elif step == 1:
             password = getpass.getpass()
             count = 1
@@ -213,10 +265,14 @@ class Client(threading.Thread):
 
     def send_to_server(self, method, *msg):
         send = chr(method)
-        print('send:' + str(msg))
         for s in msg:
             send += u'\1' + s
-        self.socket.send(send)
+        return self.socket.send(send)
+
+    @staticmethod
+    def timer_starter(client):
+        client.show()
+        client.get_data()
 
     @staticmethod
     def get_word(s, start=0):

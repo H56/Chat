@@ -1,0 +1,10 @@
+2016-01-05 20:55:16,999 - network-server - DEBUG - accept connection from 127.0.0.1, 59932, fd = 8
+2016-01-05 20:55:18,795 - network-server - DEBUG - 127.0.0.1, 59932 closed
+2016-01-05 20:55:48,471 - network-server - DEBUG - accept connection from 127.0.0.1, 59935, fd = 8
+2016-01-05 20:55:50,881 - network-server - DEBUG - 8 receive abc
+2016-01-05 20:56:35,893 - network-server - DEBUG - 8 receive abcde
+2016-01-05 20:56:38,548 - network-server - DEBUG - 127.0.0.1, 59935 closed
+2016-01-05 20:58:10,843 - network-server - DEBUG - accept connection from 127.0.0.1, 59944, fd = 8
+2016-01-05 20:58:13,670 - network-server - DEBUG - 8 receive abcd\
+2016-01-05 20:58:16,598 - network-server - DEBUG - 8 receive abcd
+2016-01-05 20:58:35,865 - network-server - DEBUG - 127.0.0.1, 59944 closed

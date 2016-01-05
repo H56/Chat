@@ -1,12 +1,12 @@
 import hashlib
 import logging
 import sqlite3
-from singleton import *
+# from singleton import *
 
 __author__ = 'HuPeng'
 
 
-@singleton
+# @singleton
 class AccessDao:
 
     def __init__(self):
@@ -33,10 +33,10 @@ class AccessDao:
         :return: -1: no user, 1: ok, 0: wrong passwd
         '''
         sql = 'SELECT passwd FROM chat_user WHERE uid = ?'
-        passwd = self.select_sql(sql, uid)
+        passwd = self.select_sql(sql, (uid, ))
         if passwd is None or len(passwd) == 0:
             return -1
-        elif hashlib.sha1(upasswd).hexdigest() == passwd[0]:
+        elif hashlib.sha1(upasswd).hexdigest() == passwd[0][0]:
             return 1
         else:
             return 0
@@ -47,20 +47,20 @@ class AccessDao:
 
     def get_name(self, uid):
         sql = 'SELECT uname FROM chat_user WHERE uid = ?'
-        uname = self.select_sql(sql, uid)
+        uname = self.select_sql(sql, (uid, ))
         return uname[0]
 
     def get_rooms(self):
         return {}
 
     def logout(self, uid, data):
-        sql = u'''INSERT INTO logging_info(uid, login, logout) value(?, ?, ?)'''
-        data = (uid, data[0], data[1])
-        self.change_sql(sql, data)
+        sql = '''INSERT INTO logging_info(uid, login, logout) VALUES(?, ?, ?)'''
+        _data = (uid, data[0], data[1])
+        self.change_sql(sql, _data)
 
     def register(self, uid, uname, upasswd):
         if not self.have_id(uid):
-            sql = u'''INSERT INTO chat_user(uid, uname, passwd) value(?, ?, ?)'''
+            sql = '''INSERT INTO chat_user(uid, uname, passwd) VALUES(?, ?, ?)'''
             data = (uid, uname, hashlib.sha1(upasswd).hexdigest())
             self.change_sql(sql, data)
             return True
@@ -68,8 +68,8 @@ class AccessDao:
             return False
 
     def have_id(self, uid):
-        sql = u'''SELECT * FROM chat_user WHERE uid = ?'''
-        return len(self.execute_sql(sql, uid)) > 0
+        sql = '''SELECT * FROM chat_user WHERE uid = ?'''
+        return len(self.select_sql(sql, (uid, ))) > 0
 
     def select_sql(self, sql, data):
         if sql is not None and sql != '':
@@ -98,14 +98,14 @@ class AccessDao:
 
     def test_table(self):
         # user
-        status = self.__test__(u'chat_user',
-                      u'''CREATE TABLE chat_user(uid VARCHAR(30) PRIMARY KEY, uname VARCHAR(100), passwd CHAR(40))''')
+        status = self.__test__('chat_user',
+                      '''CREATE TABLE chat_user(uid VARCHAR(30) PRIMARY KEY, uname VARCHAR(100), passwd CHAR(40))''')
         if not status:
             self.conn.execute("")
 
         # login and logout info
-        self.__test__(u'logging_info', u'''CREATE TABLE logging_info(id INTEGER PRIMARY KEY, uid VARCHAR(30), '''
-                                       u'''login FLOAT, logout FLOAT)''')
+        self.__test__('logging_info', '''CREATE TABLE logging_info(id INTEGER PRIMARY KEY, uid VARCHAR(30), '''
+                                      '''login FLOAT, logout FLOAT)''')
 
         #
 
