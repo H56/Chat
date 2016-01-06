@@ -1,0 +1,19 @@
+2016-01-07 00:02:56,973 - network-server - ERROR - listen file id bind ip error
+2016-01-07 00:03:37,085 - network-server - DEBUG - accept connection from 127.0.0.1, 49456, fd = 8
+2016-01-07 00:03:50,335 - network-server - DEBUG - 8 receive The Number is 1
+2016-01-07 00:03:52,972 - network-server - DEBUG - 8 receive The Number is 2
+2016-01-07 00:03:53,974 - network-server - DEBUG - 8 receive The Number is 3
+2016-01-07 00:03:54,976 - network-server - DEBUG - 8 receive The Number is 4
+2016-01-07 00:03:55,979 - network-server - DEBUG - 8 receive The Number is 5
+2016-01-07 00:03:56,983 - network-server - DEBUG - 8 receive The Number is 6
+2016-01-07 00:03:57,985 - network-server - DEBUG - 8 receive The Number is 7
+2016-01-07 00:03:58,988 - network-server - DEBUG - 8 receive The Number is 8
+2016-01-07 00:03:59,990 - network-server - DEBUG - 8 receive The Number is 9
+2016-01-07 00:04:00,994 - network-server - DEBUG - 8 receive The Number is 10
+2016-01-07 00:04:01,997 - network-server - DEBUG - 127.0.0.1, 49456 closed
+2016-01-07 00:04:56,652 - network-server - DEBUG - accept connection from 127.0.0.1, 49459, fd = 8
+2016-01-07 00:04:56,653 - network-server - DEBUG - 8 receive The Number is 1
+2016-01-07 00:04:57,656 - network-server - DEBUG - 127.0.0.1, 49459 closed
+2016-01-07 00:05:27,955 - network-server - DEBUG - accept connection from 127.0.0.1, 49462, fd = 8
+2016-01-07 00:05:50,792 - network-server - DEBUG - 8 receive The Number is 1
+2016-01-07 00:06:37,851 - network-server - DEBUG - 127.0.0.1, 49462 closed

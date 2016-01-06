@@ -36,6 +36,7 @@ HAVENONAME = 54
 WRONGPASSWD = 55
 UNLINE = 56
 NOTINROOM = 57
+LOGINED = 58
 
 Hall_message = Queue.Queue()
 
@@ -82,7 +83,7 @@ class Server(threading.Thread):
             self.listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.listen_socket.bind(self.address)
-            self.listen_socket.listen(5)
+            self.listen_socket.listen(1)
             self.listen_socket.setblocking(0)
         except socket.error, msg:
             self.logger.error('socket error: ' + str(msg))
@@ -102,39 +103,42 @@ class Server(threading.Thread):
                 continue
             for fd, event in events:
                 client_socket = self.fd_to_info[fd].socket
-                if event & select.EPOLLIN:
-                    if client_socket == self.listen_socket:
-                        connection, address = self.listen_socket.accept()
-                        connection.setblocking(0)
-                        self.epoll.register(connection.fileno(), select.EPOLLIN | select.EPOLLET)
-                        self.fd_to_info[connection.fileno()] = self.Info(connection, address)
-                        print('connet ok, from' + str(address))
-                    else:
-                        # data may be very long
-                        all_data = ''
-                        while True:
-                            try:
-                                data = client_socket.recv(BUFFERSIZE)
-                                if not data and not all_data:
-                                    # self.epoll.unregister(fd)
-                                    # client_socket.close()
-                                    self.logger.debug('%s, %d closed' % (self.fd_to_info[fd].address[0],
-                                                                         self.fd_to_info[fd].address[1]))
-                                    self.epoll.modify(fd, 0)
-                                    self.fd_to_info[fd].socket.shutdown(socket.SHUT_RDWR)
-                                    break
-                                else:
-                                    all_data += data
-                            except socket.error, msg:
-                                if msg.errno == errno.EAGAIN:
-                                    self.logger.debug('%s receive %s' % (str(self.fd_to_info[fd].address), all_data))
-                                    # ----------process the data-----------
-                                    self.parse_data(all_data, fd)
-                                else:
-                                    self.epoll.unregister(fd)
-                                    client_socket.close()
-                                    self.logger.error('receive data error, socket error: ' + str(msg))
+                if fd == self.listen_socket.fileno():
+                    connection, address = self.listen_socket.accept()
+                    connection.setblocking(0)
+                    self.epoll.register(connection.fileno(), select.EPOLLIN | select.EPOLLET)
+                    self.fd_to_info[connection.fileno()] = self.Info(connection, address)
+                    print('connet ok, from' + str(address))
+                elif event & select.EPOLLIN:
+                    # data may be very long
+                    all_data = ''
+                    while True:
+                        try:
+                            data = client_socket.recv(BUFFERSIZE)
+                            if not data and not all_data:
+                                # self.epoll.unregister(fd)
+                                # client_socket.close()
+                                self.logger.debug('%s, %d closed' % (self.fd_to_info[fd].address[0],
+                                                                     self.fd_to_info[fd].address[1]))
+                                # self.epoll.modify(fd, 0)
+                                # client_socket.shutdown(socket.SHUT_RDWR)
+                                self.remove(fd)
                                 break
+                            else:
+                                all_data += data
+                        except socket.error, msg:
+                            if msg.errno == errno.EAGAIN:
+                                self.logger.debug('%s receive %s' % (str(self.fd_to_info[fd].address), all_data))
+                                # ----------process the data-----------
+                                self.parse_data(all_data, fd)
+                            else:
+                                # self.epoll.modify(fd, 0)
+                                # client_socket.shutdown(socket.SHUT_RDWR)
+                                self.remove(fd)
+                                self.logger.error('receive data error, socket error: ' + str(msg))
+                            break
+                elif event & select.EPOLLHUP:
+                    self.remove(fd)
                 elif event & select.EPOLLOUT:
                     # try:
                     #     msg = self.fd_to_info[fd].message_queues.get_nowait()
@@ -146,13 +150,18 @@ class Server(threading.Thread):
                     # send messages
                     msg_queues = self.fd_to_info[fd].message_queues
                     while not msg_queues.empty():
-                        send_len = client_socket.send(msg_queues.get_nowait())
-                        if send_len == 0:
-                            self.logger.info('send to ' + self.fd_to_info[fd].user.uid + ' failed')
-                            break
+                        send_msg = msg_queues.get_nowait()
+                        send_len = 0
+                        while True:
+                            send_len += client_socket.send(send_msg[send_len:])
+                            if send_len >= len(send_msg):
+                                break
+                            elif send_len == 0:
+                                self.logger.info('send to ' + self.fd_to_info[fd].user.uid + ' failed')
+                                break
                     self.epoll.modify(fd, select.EPOLLIN | select.EPOLLET)
-                elif event & select.EPOLLHUP:
-                    self.remove(fd)
+                else:
+                    continue
 
         self.epoll.unregister(self.listen_socket.fileno())
         self.epoll.close()
@@ -161,17 +170,19 @@ class Server(threading.Thread):
     def send_timer(self):
         is_hall = not self.hall_message_queue.empty()
         fd_set = set()
+        # hall messages
         while not self.hall_message_queue.empty():
             msg = self.hall_message_queue.get_nowait()
             for fd in self.fd_to_info:
                 if self.fd_to_info[fd].user:
                     self.fd_to_info[fd].message_queues.put(msg)
-
+                    self.epoll.modify(fd, select.EPOLLET | select.EPOLLOUT)
+        # personal messages
         if not is_hall:
             for fd in self.fd_to_info:
                 if not self.fd_to_info[fd].message_queues.empty():
                     fd_set.add(fd)
-
+        # room messages
         for room in self.rooms:
             msgs = self.rooms[room].get_all_messages()
             if len(msgs) > 0:
@@ -181,10 +192,8 @@ class Server(threading.Thread):
                         fd_set.add(fd)
                     for msg in msgs:
                         self.fd_to_info[fd].message_queues.put(msg)
-        if is_hall:
-            for fd in self.fd_to_info:
-                self.epoll.modify(fd, select.EPOLLET | select.EPOLLOUT)
-        else:
+
+        if not is_hall:
             for fd in fd_set:
                 self.epoll.modify(fd, select.EPOLLET | select.EPOLLOUT)
         self.timer = threading.Timer(0.05, self.send_timer, ())
@@ -280,6 +289,9 @@ class Server(threading.Thread):
                 return
             uname = data[start: end]
             passwd = data[end + 1: len(data)]
+            if uname in self.user_to_fd:
+                self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(LOGINED))
+                return
             status = self.access.is_legal(uname, passwd)
             if status == 1:
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(SUCCESS))

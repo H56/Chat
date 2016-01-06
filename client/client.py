@@ -33,6 +33,7 @@ SUCCESS = 53
 HAVENONAME = 54
 WRONGPASSWD = 55
 NOTINROOM = 57
+LOGINED = 58
 
 
 class Client(threading.Thread):
@@ -214,6 +215,9 @@ class Client(threading.Thread):
             elif status == WRONGPASSWD or status == HAVENONAME:
                 print('Username or passwd is not correct!\r\n')
                 self.login()
+            elif status == LOGINED:
+                print('This user name has been logined!')
+                self.login()
             elif status == FAILED:
                 print('Unknown reason made the register failed, please re-login!\r\n')
                 self.login()
@@ -256,7 +260,7 @@ class Client(threading.Thread):
                     self.logger.error(u'''server's operation error!''')
                     return
                 user = data[start: end]
-                self.message_queue.put('[ROOM: ' + room + ']' + user + 'said: ' + data[end + 1: len(data)] + u'\r\n')
+                self.message_queue.put('[ROOM: ' + room + '] ' + user + ' said: ' + data[end + 1: len(data)] + u'\r\n')
         elif operation == SENDTO:
             start = end + 1
             end = data.find(u'\1', start)
