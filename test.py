@@ -1,8 +1,27 @@
 import sys
 import select
+import threading
 from time import sleep
 import termios
 import tty
+import thread
+
+
+def timer(ID):
+    print(str(ID) + ':  ' + str(thread.get_ident()))
+
+for i in range(0, 2):
+    timer0 = threading.Timer(0.1, timer, (0, ))
+    timer0.start()
+    timer1 = threading.Timer(0.1, timer, (1, ))
+    timer1.start()
+    timer2 = threading.Timer(0.1, timer, (2, ))
+    timer2.start()
+    thread.start_new_thread(timer, ('thread0', ))
+    thread.start_new_thread(timer, ('thread1', ))
+    thread.start_new_thread(timer, ('thread2', ))
+    sleep(1)
+
 old_settings = termios.tcgetattr(sys.stdin)
 tty.setcbreak(sys.stdin.fileno())
 while True:

@@ -14,3 +14,4 @@
 2016-01-06 00:29:17,981-Chat-Server-ERROR-receive data error, socket error: [Errno 104] Connection reset by peer
 2016-01-06 00:29:56,062-Chat-Server-ERROR-receive data error, socket error: [Errno 104] Connection reset by peer
 2016-01-06 01:15:50,092-Chat-Server-ERROR-receive data error, socket error: [Errno 104] Connection reset by peer
+2016-01-06 12:37:12,203-Chat-Server-ERROR-socket error: [Errno 98] Address already in use

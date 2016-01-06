@@ -18,6 +18,7 @@ LOGOUT = 12
 SENDALL = 20
 SENDTO = 21
 SENDROOM = 22
+CREATEROOM = 23
 
 ENTERHALL = 30
 ENTERROOM = 31
@@ -32,8 +33,6 @@ SUCCESS = 53
 HAVENONAME = 54
 WRONGPASSWD = 55
 
-def test(client):
-    print('test fuck!')
 
 class Client(threading.Thread):
     def __init__(self, server_address=('localhost', 21313)):
@@ -47,7 +46,7 @@ class Client(threading.Thread):
         log_file.setLevel(logging.DEBUG)
         log_stream = logging.StreamHandler()
         log_stream.setLevel(logging.ERROR)
-        formatter = logging.Formatter('%(asctime)s-%(name)s-%(levelname)s-%(message)s')
+        formatter = logging.Formatter('%(asctime)s-%(name)s-%(levelname)s-%(messages)s')
         log_stream.setFormatter(formatter)
         log_file.setFormatter(formatter)
         self.logger.addHandler(log_file)
@@ -64,11 +63,7 @@ class Client(threading.Thread):
         self.timer_input = None
         self.default = HALL
         self.starter = None
-
-    def __del__(self):
-        self.socket.close()
-        if self.timer_show is not None:
-            self.timer_show.cancel()
+        self.shut_status = False
 
     def show(self):
         while not self.message_queue.empty():
@@ -77,7 +72,7 @@ class Client(threading.Thread):
         self.timer_show.start()
 
     def get_data(self):
-        while True:
+        while self.timer_input:
             ch = getch()
             if ch == ' ':
                 self.timer_show.cancel()
@@ -90,59 +85,81 @@ class Client(threading.Thread):
                 elif operation == 'sendto':
                     user, end = self.get_word(msg, end)
                     if end >= len(msg):
-                        print('''user name or message can't be empty!''')
+                        print('''user name or messages can't be empty!\r\n''')
                     else:
                         self.send_to_server(SENDTO, user, msg[end: len(msg)])
                 elif operation == 'sendroom':
                     room = self.get_word(msg, end)
                     if end >= len(msg):
-                        print('''room or message can't be empty!''')
+                        print('''room or messages can't be empty!\r\n''')
                     else:
                         self.send_to_server(SENDROOM, room, msg[end: len(msg)])
                 elif operation == 'enter':
                     room, end = self.get_word(msg, end)
                     if room == 'hall':
                         self.send_to_server(ENTERHALL)
-                    else:
+                    elif room != '':
                         self.send_to_server(ENTERROOM, room)
+                    else:
+                        print('Room name can\' be blank.\r\n')
+                elif operation == 'createroom':
+                    room, end = self.get_word(msg, end)
+                    if room != '':
+                        self.send_to_server(CREATEROOM, room)
+                    else:
+                        print("Room name can't be blank!\r\n")
+                elif operation == 'close':
+                    self.shut()
+                elif operation == 'help':
+                    self.help()
+                elif isinstance(operation, str):
+                    print('''no the operation: ''' + operation + '\r\n')
                 else:
-                    print('''no the operation: ''' + operation)
+                    print('''illegal input parameters\r\n''')
 
             elif ch == '\3':
-                self.receive = False
-                self.timer_show.cancel
+                self.shut()
                 break
 
     def run(self):
-        print('1: Login\t 2: register')
+        print('1: Login\t 2: register\r\n')
         while True:
             choice = raw_input('Please choose the action number:')
             try:
                 choice_num = int(choice)
             except Exception as e:
                 self.logger.error('choice error: ' + str(e))
-                print(choice)
                 if choice == '\3':
                     self.receive = False
                     return
-                print('Please input the right number.')
+                print('Please input the right number.\r\n')
             else:
                 if 0 <= choice_num < 3:
                     break
                 else:
-                    print('Please input the right number.')
+                    print('Please input the right number.\r\n')
         if choice_num == 1:
             self.login()
         elif choice_num == 2:
             self.register()
         # data = ''
         while self.receive:
-            data = self.socket.recv(BUFFERSIZE)
+            try:
+                data = self.socket.recv(BUFFERSIZE)
+            except Exception as e:
+                self.logger.info('exit' + str(e))
+                self.shut()
+                self.logger.error('Abnormal stop...')
+                break
             # self.message_queue.put(data + '\r\n')
             if not data:
+                self.shut()
+                self.logger.info('stopping...')
                 break
             else:
                 self.sparse_data(data)
+        self.logger.info('close the socket...')
+        self.socket.close()
 
     def sparse_data(self, data):
         start = 0
@@ -161,19 +178,19 @@ class Client(threading.Thread):
                 return
             status = ord(data[start: end])
             if status == HAVENAME:
-                print('This name has been used, please rename your account!')
+                print('This name has been used, please rename your account!\r\n')
                 self.register(0)
             elif status == NAMEOK:
                 self.register(1)
             elif status == FAILED:
-                print('Unknown reason made the register failed, please re-register!')
+                print('Unknown reason made the register failed, please re-register!\r\n')
                 self.register(0)
             elif status == SUCCESS:
-                print('Congratulation! Registration successful!')
-                print('Please login your account!')
+                print('Congratulation! Registration successful!\r\n')
+                print('Please login your account!\r\n')
                 self.login()
             else:
-                print('Unknown reason made the register failed, please re-register!')
+                print('Unknown reason made the register failed, please re-register!\r\n')
                 self.register(0)
         elif operation == LOGIN:
             start = end + 1
@@ -185,23 +202,23 @@ class Client(threading.Thread):
                 return
             status = ord(data[start: end])
             if status == SUCCESS:
-                print('Congratulation! login is successful!')
-                print('Press blank key to input data!')
+                print('Congratulation! login is successful!\r\n')
+                print('Press blank key to input data!\r\n')
                 # -----------input thread-----------
                 # self.starter = thread.start_new_thread(self.timer_starter, (self, ))
                 self.show()
                 self.timer_input = threading.Timer(0.05, self.get_data, ())
                 self.timer_input.start()
             elif status == WRONGPASSWD or status == HAVENONAME:
-                print('Username or passwd is not correct!')
+                print('Username or passwd is not correct!\r\n')
                 self.login()
             elif status == FAILED:
-                print('Unknown reason made the register failed, please re-login!')
+                print('Unknown reason made the register failed, please re-login!\r\n')
                 self.login()
             else:
-                print('Unknown reason made the register failed, please re-login!')
+                print('Unknown reason made the register failed, please re-login!\r\n')
                 self.login()
-        elif SENDALL:
+        elif operation == SENDALL:
             start = end + 1
             end = data.find(u'\1', start)
             if end == -1:
@@ -211,7 +228,7 @@ class Client(threading.Thread):
                 return
             user = data[start: end]
             self.message_queue.put('[HALL] ' + user + ' said: ' + data[end + 1: len(data)] + '\r\n')
-        elif SENDROOM:
+        elif operation == SENDROOM:
             start = end + 1
             end = data.find(u'\1', start)
             if end == -1:
@@ -229,7 +246,7 @@ class Client(threading.Thread):
                 return
             user = data[start: end]
             self.message_queue.put('[ROOM:' + room + ']' + user + 'said: ' + data[end + 1: len(data)] + u'\r\n')
-        elif SENDTO:
+        elif operation == SENDTO:
             start = end + 1
             end = data.find(u'\1', start)
             if end == -1:
@@ -237,8 +254,31 @@ class Client(threading.Thread):
             if start == end:
                 self.logger.error(u'''server's operation error!''')
                 return
-            user = data[start: end]
+            if end == len(data):
+                status = ord(data[start: end])
+                if status == HAVENONAME:
+                    print('He is not online or no the user!\r\n')
+            else:
+                user = data[start: end]
             self.message_queue.put(user + 'said: ' + data[end + 1: len(data)] + u'\r\n')
+        elif operation == CREATEROOM:
+            start = end + 1
+            end = data.find(u'\1', start)
+            if end == -1:
+                end = len(data)
+            if start == end:
+                self.logger.error(u'''server's operation error!''')
+                return
+            status = ord(data[start: end])
+            if SUCCESS == status:
+                print('Congratulation, create room success!\r\n')
+                print("You can use 'enter room-name' and 'sendroom room-name' to join in the room and"
+                      " send room messages.\r\n")
+            elif HAVENAME == status:
+                print('The room name has been used.\r\n')
+            else:
+                print('Unknown errors make it failed!\r\n')
+
         elif operation == LOGOUT:
             pass
 
@@ -251,9 +291,9 @@ class Client(threading.Thread):
             password = getpass.getpass()
             count = 1
             while getpass.getpass('Verify your password: ') != password:
-                print('The two password do not match! Please re-verify your password.')
+                print('The two password do not match! Please re-verify your password.\r\n')
                 if count == 3:
-                    print('It is failed to verify your password for too many times! Please retype your password.')
+                    print('It is failed to verify your password for too many times! Please retype your password.\r\n')
                     password = getpass.getpass('Retype Password: ')
                 count += 1
             self.send_to_server(REGISTER, str(self.UserName), hashlib.sha1(password).hexdigest())
@@ -269,6 +309,24 @@ class Client(threading.Thread):
             send += u'\1' + s
         return self.socket.send(send)
 
+    def shut(self):
+        if not self.shut_status:
+            self.receive = False
+            self.socket.shutdown(socket.SHUT_RD)
+            self.timer_show.cancel()
+            self.timer_input = None
+            print('Thank your trust!')
+            self.shut_status = True
+
+    @staticmethod
+    def help():
+        print('This is the simple help.\r\n')
+        print("sendall messages: send your messages to hall.\r\n")
+        print("sendroom room-name messages: send your messages to the room\r\n")
+        print("sendto user-name messages: send your messages to the user\r\n")
+        print("createroom room-name: create the room named room-name\r\n")
+        print("enter room-name: enter the room, and you'll receive the messages from the roommates\r\n")
+
     @staticmethod
     def timer_starter(client):
         client.show()
@@ -281,9 +339,9 @@ class Client(threading.Thread):
         while begin < length and s[begin].isspace():
             begin += 1
         if begin >= length:
-            return -1
+            begin = length
         end = begin
-        while not s[end].isspace():
+        while end < length and not s[end].isspace():
             end += 1
         return s[begin: end], end
 

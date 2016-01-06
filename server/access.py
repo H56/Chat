@@ -15,7 +15,7 @@ class AccessDao:
         log_file.setLevel(logging.DEBUG)
         log_stream = logging.StreamHandler()
         log_stream.setLevel(logging.ERROR)
-        formatter = logging.Formatter('%(asctime)s-%(name)s-%(levelname)s-%(message)s')
+        formatter = logging.Formatter('%(asctime)s-%(name)s-%(levelname)s-%(messages)s')
         log_stream.setFormatter(formatter)
         log_file.setFormatter(formatter)
         self.logger.addHandler(log_file)
@@ -50,8 +50,18 @@ class AccessDao:
         uname = self.select_sql(sql, (uid, ))
         return uname[0]
 
+    def create_room(self, rid, room, owner_uid):
+        if self.have_room(room):
+            return False
+        else:
+            sql = 'INSERT INTO room_info(rid, rname, owner_uid) VALUES(?, ?, ?) '
+            data = (rid, room, owner_uid)
+            self.change_sql(sql, data)
+            return True
+
     def get_rooms(self):
-        return {}
+        sql = "SELECT * FROM room_info"
+        return self.select_sql(sql, ())
 
     def logout(self, uid, data):
         sql = '''INSERT INTO logging_info(uid, login, logout) VALUES(?, ?, ?)'''
@@ -70,6 +80,10 @@ class AccessDao:
     def have_id(self, uid):
         sql = '''SELECT * FROM chat_user WHERE uid = ?'''
         return len(self.select_sql(sql, (uid, ))) > 0
+
+    def have_room(self, room):
+        sql = 'SELECT * FROM room_info WHERE rid = ?'
+        return len(self.select_sql(sql, (room, ))) > 0
 
     def select_sql(self, sql, data):
         if sql is not None and sql != '':
@@ -98,18 +112,20 @@ class AccessDao:
 
     def test_table(self):
         # user
-        status = self.__test__('chat_user',
+        status = self._test('chat_user',
                       '''CREATE TABLE chat_user(uid VARCHAR(30) PRIMARY KEY, uname VARCHAR(100), passwd CHAR(40))''')
         if not status:
             self.conn.execute("")
 
         # login and logout info
-        self.__test__('logging_info', '''CREATE TABLE logging_info(id INTEGER PRIMARY KEY, uid VARCHAR(30), '''
+        self._test('logging_info', '''CREATE TABLE logging_info(id INTEGER PRIMARY KEY, uid VARCHAR(30), '''
                                       '''login FLOAT, logout FLOAT)''')
 
-        #
+        # room info
+        self._test('room_info', 'CREATE TABLE room_info(rid VARCHAR(30) PRIMARY KEY, rname VARCHAR(100), '
+                                'owner_uid VARCHAR(30))')
 
-    def __test__(self, table, exe):
+    def _test(self, table, exe):
         try:
             self.conn.execute("SELECT * FROM " + table)
         except Exception as e:
@@ -124,3 +140,6 @@ class AccessDao:
             return False
         else:
             return True
+
+    def __del__(self):
+        self.conn.close()

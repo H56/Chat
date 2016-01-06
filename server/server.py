@@ -20,6 +20,7 @@ LOGOUT = 12
 SENDALL = 20
 SENDTO = 21
 SENDROOM = 22
+CREATEROOM = 23
 
 ENTERHALL = 30
 ENTERROOM = 31
@@ -45,7 +46,7 @@ class Server(threading.Thread):
             self.user = None
             self.address = address
             self.socket = connection
-            # personal message queues
+            # personal messages queues
             self.message_queues = Queue.Queue()
             self.rooms = []
 
@@ -56,7 +57,7 @@ class Server(threading.Thread):
         log_file.setLevel(logging.DEBUG)
         log_stream = logging.StreamHandler()
         log_stream.setLevel(logging.ERROR)
-        formatter = logging.Formatter('%(asctime)s-%(name)s-%(levelname)s-%(message)s')
+        formatter = logging.Formatter('%(asctime)s-%(name)s-%(levelname)s-%(messages)s')
         log_stream.setFormatter(formatter)
         log_file.setFormatter(formatter)
         self.logger.addHandler(log_file)
@@ -69,7 +70,7 @@ class Server(threading.Thread):
         self.fd_to_info = {}
         self.user_to_fd = {}
         self.hall_message_queue = Queue.Queue()
-        self.rooms_message_queues = {}
+        # self.rooms_message_queues = {}
         self.hall_message = [0, []]
         self.rooms_message = {}
         self.rooms = rooms.Rooms()
@@ -115,8 +116,9 @@ class Server(threading.Thread):
                             try:
                                 data = client_socket.recv(BUFFERSIZE)
                                 if not data and not all_data:
-                                    self.epoll.unregister(fd)
-                                    client_socket.close()
+                                    # self.epoll.unregister(fd)
+                                    # client_socket.close()
+                                    self.remove(fd)
                                     self.logger.debug('%s, %d closed' % (self.fd_to_info[fd].address[0],
                                                                          self.fd_to_info[fd].address[1]))
                                     break
@@ -140,28 +142,24 @@ class Server(threading.Thread):
                     #     self.epoll.modify(fd, select.EPOLLIN)
                     # else:
                     #     client_socket.send(msg)
-                    # send hall message
+                    # send hall messages
                     if self.hall_message[0] > 0:
                         for msg in self.hall_message[1]:
                             client_socket.send(chr(SENDALL) + '\1' + msg)
                         self.hall_message[0] -= 1
-                    # send room message
+                    # send room messages
                     for room in self.fd_to_info[fd].rooms:
                         for msg in self.rooms_message[room][1]:
                             client_socket.send(chr(SENDROOM) + '\1' + msg)
                         self.rooms_message[room][0] -= 1
-                    # send personal message
+                    # send personal messages
                     msg_queues = self.fd_to_info[fd].message_queues
                     while not msg_queues.empty():
                         client_socket.send(chr(SENDTO) + '\1' + msg_queues.get_nowait())
                     self.epoll.modify(fd, select.EPOLLIN | select.EPOLLET)
                 elif event & select.EPOLLHUP:
-                    self.epoll.unregister(fd)
-                    self.fd_to_info[fd].socket.close()
-                    if self.fd_to_info[fd].user:
-                        name = self.fd_to_info[fd].user.uid
-                        del self.user_to_fd[name]
-                    del self.fd_to_info[fd]
+                    self.remove(fd)
+
 
         self.epoll.unregister(listen_socket.fileno())
         self.epoll.close()
@@ -219,7 +217,7 @@ class Server(threading.Thread):
             end = data.find(u'\1', start)
             if end == -1:
                 end = len(data)
-            if data == end:
+            if start == end:
                 self.logger.error('Wrong format!')
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(FAILED))
                 return
@@ -236,12 +234,12 @@ class Server(threading.Thread):
             end = data.find(u'\1', start)
             if end == -1:
                 end = len(data)
-            if data == end:
+            if start == end:
                 self.logger.error('Wrong format!')
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(FAILED))
                 return
             uname = data[start: end]
-            if self.user_to_fd.has_key(uname):
+            if uname in self.user_to_fd:
                 self.fd_to_info[self.user_to_fd[uname]].message_queues.put(
                     self.fd_to_info[fd].user.name + '\1' + data[end + 1: len(data)])
             # elif self.access.have_id(uname):
@@ -263,7 +261,7 @@ class Server(threading.Thread):
                 end = data.find(u'\1', start)
                 if end == -1:
                     end = len(data)
-                if data == end:
+                if start == end:
                     self.logger.error('Wrong format!')
                     self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(FAILED))
                     return
@@ -284,7 +282,7 @@ class Server(threading.Thread):
             end = data.find(u'\1', start)
             if end == -1:
                 end = len(data)
-            if data == end:
+            if start == end:
                 self.logger.error('Wrong format!')
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(FAILED))
                 return
@@ -299,12 +297,49 @@ class Server(threading.Thread):
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(HAVENONAME))
             else:
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(WRONGPASSWD))
+        elif method == ENTERROOM:
+            start = end + 1
+            end = data.find(u'\1', start)
+            if end == -1:
+                end = len(data)
+            if start == end:
+                self.logger.error('Wrong format!')
+                self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(FAILED))
+                return
+            room = data[start: end]
+        elif method == CREATEROOM:
+            start = end + 1
+            end = data.find(u'\1', start)
+            if end == -1:
+                end = len(data)
+            if start == end:
+                self.logger.error('Wrong format!')
+                self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(FAILED))
+                return
+            room = data[start: end]
+            if self.access.create_room(room, room, self.fd_to_info[fd].user.uid):
+                self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(SUCCESS))
+                self.rooms.add(room, room, self.fd_to_info[fd].user.uid)
+            else:
+                self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(HAVENAME))
+
         elif method == LOGOUT:
-            self.fd_to_info[fd].user.logout()
-            del self.fd_to_info[fd]
+            # self.fd_to_info[fd].user.logout()
+            # del self.user_to_fd[self.fd_to_info[fd].user.uid]
+            # del self.fd_to_info[fd]
+            pass
 
     def __del__(self):
         self.epoll.close()
+
+    def remove(self, fd):
+        self.epoll.unregister(fd)
+        self.fd_to_info[fd].socket.close()
+        if self.fd_to_info[fd].user:
+            name = self.fd_to_info[fd].user.uid
+            self.fd_to_info[fd].user.logout()
+            del self.user_to_fd[name]
+        del self.fd_to_info[fd]
 
 
 def main():
