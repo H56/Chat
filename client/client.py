@@ -32,6 +32,7 @@ FAILED = 52
 SUCCESS = 53
 HAVENONAME = 54
 WRONGPASSWD = 55
+NOTINROOM = 57
 
 
 class Client(threading.Thread):
@@ -89,7 +90,7 @@ class Client(threading.Thread):
                     else:
                         self.send_to_server(SENDTO, user, msg[end: len(msg)])
                 elif operation == 'sendroom':
-                    room = self.get_word(msg, end)
+                    room, end = self.get_word(msg, end)
                     if end >= len(msg):
                         print('''room or messages can't be empty!\r\n''')
                     else:
@@ -160,6 +161,7 @@ class Client(threading.Thread):
                 self.sparse_data(data)
         self.logger.info('close the socket...')
         self.socket.close()
+        exit(0)
 
     def sparse_data(self, data):
         start = 0
@@ -236,16 +238,25 @@ class Client(threading.Thread):
             if start == end:
                 self.logger.error(u'''server's operation error!''')
                 return
-            room = data[start: end]
-            start = end + 1
-            end = data.find(u'\1', start)
-            if end == -1:
-                end = len(data)
-            if start == end:
-                self.logger.error(u'''server's operation error!''')
-                return
-            user = data[start: end]
-            self.message_queue.put('[ROOM:' + room + ']' + user + 'said: ' + data[end + 1: len(data)] + u'\r\n')
+            if end == len(data):
+                status = ord(data[start: end])
+                if NOTINROOM == status:
+                    print('You are not in the room!\r\n')
+                elif HAVENONAME == status:
+                    print('Have no the room!\r\n')
+                else:
+                    print('Unknown error\r\n!')
+            else:
+                room = data[start: end]
+                start = end + 1
+                end = data.find(u'\1', start)
+                if end == -1:
+                    end = len(data)
+                if start == end:
+                    self.logger.error(u'''server's operation error!''')
+                    return
+                user = data[start: end]
+                self.message_queue.put('[ROOM: ' + room + ']' + user + 'said: ' + data[end + 1: len(data)] + u'\r\n')
         elif operation == SENDTO:
             start = end + 1
             end = data.find(u'\1', start)
@@ -260,7 +271,7 @@ class Client(threading.Thread):
                     print('He is not online or no the user!\r\n')
             else:
                 user = data[start: end]
-            self.message_queue.put(user + 'said: ' + data[end + 1: len(data)] + u'\r\n')
+                self.message_queue.put('[' + user + ']' + ' said: ' + data[end + 1: len(data)] + u'\r\n')
         elif operation == CREATEROOM:
             start = end + 1
             end = data.find(u'\1', start)
@@ -278,6 +289,19 @@ class Client(threading.Thread):
                 print('The room name has been used.\r\n')
             else:
                 print('Unknown errors make it failed!\r\n')
+        elif operation == ENTERROOM:
+            start = end + 1
+            end = data.find(u'\1', start)
+            if end == -1:
+                end = len(data)
+            if start == end:
+                self.logger.error(u'''server's operation error!''')
+                return
+            status = ord(data[start: end])
+            if SUCCESS == status:
+                print('Congratulation, enter the room success!\r\n')
+            elif NOTINROOM == status:
+                print('The room is not exist or you are not in the room!\r\n')
 
         elif operation == LOGOUT:
             pass

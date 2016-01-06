@@ -7,6 +7,29 @@ import tty
 import thread
 
 
+class iter_test:
+    def __init__(self):
+        self.data = [1, 2, 3, 4]
+        self.index = 0
+        pass
+
+    def __iter__(self):
+        self.data_next = self.data.__iter__()
+        return self
+
+    def next(self):
+        return self.data_next.next()
+
+    def __contains__(self, item):
+        return item in self.data
+
+it = iter_test()
+for i in it:
+    print(i)
+for i in it:
+    print(i)
+print(1 in it)
+
 def timer(ID):
     print(str(ID) + ':  ' + str(thread.get_ident()))
 

@@ -35,7 +35,7 @@ SUCCESS = 53
 HAVENONAME = 54
 WRONGPASSWD = 55
 UNLINE = 56
-NONTINROOM = 57
+NOTINROOM = 57
 
 Hall_message = Queue.Queue()
 
@@ -79,21 +79,21 @@ class Server(threading.Thread):
     def run(self):
         self.access = access.AccessDao()
         try:
-            listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            listen_socket.bind(self.address)
-            listen_socket.listen(5)
-            listen_socket.setblocking(0)
+            self.listen_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.listen_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.listen_socket.bind(self.address)
+            self.listen_socket.listen(5)
+            self.listen_socket.setblocking(0)
         except socket.error, msg:
             self.logger.error('socket error: ' + str(msg))
 
         try:
             self.epoll = select.epoll()
-            self.epoll.register(listen_socket.fileno(), select.EPOLLIN)
+            self.epoll.register(self.listen_socket.fileno(), select.EPOLLIN)
         except select.error, msg:
             self.logger.error('select error: ' + str(msg))
 
-        self.fd_to_info = {listen_socket.fileno(): self.Info(listen_socket, self.address), }
+        self.fd_to_info = {self.listen_socket.fileno(): self.Info(self.listen_socket, self.address), }
         self.timer = threading.Timer(0.5, self.send_timer, ())
         self.timer.start()
         while True:
@@ -103,8 +103,8 @@ class Server(threading.Thread):
             for fd, event in events:
                 client_socket = self.fd_to_info[fd].socket
                 if event & select.EPOLLIN:
-                    if client_socket == listen_socket:
-                        connection, address = listen_socket.accept()
+                    if client_socket == self.listen_socket:
+                        connection, address = self.listen_socket.accept()
                         connection.setblocking(0)
                         self.epoll.register(connection.fileno(), select.EPOLLIN | select.EPOLLET)
                         self.fd_to_info[connection.fileno()] = self.Info(connection, address)
@@ -118,9 +118,10 @@ class Server(threading.Thread):
                                 if not data and not all_data:
                                     # self.epoll.unregister(fd)
                                     # client_socket.close()
-                                    self.remove(fd)
                                     self.logger.debug('%s, %d closed' % (self.fd_to_info[fd].address[0],
                                                                          self.fd_to_info[fd].address[1]))
+                                    self.epoll.modify(fd, 0)
+                                    self.fd_to_info[fd].socket.shutdown(socket.SHUT_RDWR)
                                     break
                                 else:
                                     all_data += data
@@ -142,60 +143,50 @@ class Server(threading.Thread):
                     #     self.epoll.modify(fd, select.EPOLLIN)
                     # else:
                     #     client_socket.send(msg)
-                    # send hall messages
-                    if self.hall_message[0] > 0:
-                        for msg in self.hall_message[1]:
-                            client_socket.send(chr(SENDALL) + '\1' + msg)
-                        self.hall_message[0] -= 1
-                    # send room messages
-                    for room in self.fd_to_info[fd].rooms:
-                        for msg in self.rooms_message[room][1]:
-                            client_socket.send(chr(SENDROOM) + '\1' + msg)
-                        self.rooms_message[room][0] -= 1
-                    # send personal messages
+                    # send messages
                     msg_queues = self.fd_to_info[fd].message_queues
                     while not msg_queues.empty():
-                        client_socket.send(chr(SENDTO) + '\1' + msg_queues.get_nowait())
+                        send_len = client_socket.send(msg_queues.get_nowait())
+                        if send_len == 0:
+                            self.logger.info('send to ' + self.fd_to_info[fd].user.uid + ' failed')
+                            break
                     self.epoll.modify(fd, select.EPOLLIN | select.EPOLLET)
                 elif event & select.EPOLLHUP:
                     self.remove(fd)
 
-
-        self.epoll.unregister(listen_socket.fileno())
+        self.epoll.unregister(self.listen_socket.fileno())
         self.epoll.close()
-        listen_socket.close()
+        self.listen_socket.close()
 
     def send_timer(self):
-        if self.hall_message[0] > 0:
-            self.timer = threading.Timer(0.02, self.send_timer, ())
-            self.timer.start()
-            return
-        for room in self.rooms_message:
-            if self.rooms_message[room][0] > 0:
-                self.timer = threading.Timer(0.02, self.send_timer, ())
-                self.timer.start()
-                return
-        del self.hall_message[1][:]
-        is_hall = False
+        is_hall = not self.hall_message_queue.empty()
+        fd_set = set()
         while not self.hall_message_queue.empty():
-            self.hall_message[1].append(self.hall_message_queue.get_nowait())
-        if len(self.hall_message[1]) != 0:
-            is_hall = True
+            msg = self.hall_message_queue.get_nowait()
+            for fd in self.fd_to_info:
+                if self.fd_to_info[fd].user:
+                    self.fd_to_info[fd].message_queues.put(msg)
+
+        if not is_hall:
+            for fd in self.fd_to_info:
+                if not self.fd_to_info[fd].message_queues.empty():
+                    fd_set.add(fd)
+
+        for room in self.rooms:
+            msgs = self.rooms[room].get_all_messages()
+            if len(msgs) > 0:
+                for member in self.rooms[room]:
+                    fd = self.user_to_fd[member]
+                    if not is_hall:
+                        fd_set.add(fd)
+                    for msg in msgs:
+                        self.fd_to_info[fd].message_queues.put(msg)
         if is_hall:
-            self.hall_message[0] = len(self.user_to_fd)
-            for usr in self.user_to_fd:
-                self.epoll.modify(self.user_to_fd[usr], select.EPOLLET | select.EPOLLOUT)
+            for fd in self.fd_to_info:
+                self.epoll.modify(fd, select.EPOLLET | select.EPOLLOUT)
         else:
-            for room in self.rooms_message_queues:
-                if room not in self.rooms_message:
-                    self.rooms_message[room] = [0, []]
-                self.rooms_message[room][0] = len()
-                while not self.rooms_message_queues[room].empty():
-                    self.rooms_message[1].append(self.rooms_message_queues[room].get_nowait())
-            for usr in self.user_to_fd:
-                if not self.fd_to_info[self.user_to_fd[usr]].message_queues.empty() \
-                        or len(self.fd_to_info[self.user_to_fd[usr]].rooms) > 0:
-                    self.epoll.modify(self.user_to_fd[usr], select.EPOLLET | select.EPOLLOUT)
+            for fd in fd_set:
+                self.epoll.modify(fd, select.EPOLLET | select.EPOLLOUT)
         self.timer = threading.Timer(0.05, self.send_timer, ())
         self.timer.start()
 
@@ -211,7 +202,7 @@ class Server(threading.Thread):
             self.logger.error('Wrong format: ' + str(e))
             return
         if method == SENDALL:
-            self.hall_message_queue.put(self.fd_to_info[fd].user.name + '\1' + data[end + 1: len(data)])
+            self.hall_message_queue.put(chr(method) + '\1' + self.fd_to_info[fd].user.name + '\1' + data[end + 1: len(data)])
         elif method == SENDROOM:
             start = end + 1
             end = data.find(u'\1', start)
@@ -222,11 +213,12 @@ class Server(threading.Thread):
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(FAILED))
                 return
             room = data[start: end]
-            if room in self.rooms_message_queues:
-                if room in self.fd_to_info[fd].room:
-                    self.rooms_message_queues[room].put(self.fd_to_info[fd].user.name + chr('\1') + data[end + 1: len(data)])
+            if room in self.rooms:
+                if self.fd_to_info[fd].user.uid in self.rooms[room]:
+                    # self.rooms_message_queues[room].put(self.fd_to_info[fd].user.name + '\1' + data[end + 1: len(data)])
+                    self.rooms[room].add_message(chr(method) + '\1' + room + '\1' + self.fd_to_info[fd].user.name + '\1' + data[end + 1: len(data)])
                 else:
-                    self.fd_to_info[fd].socket.send(chr(method) + '\1' + chr(NONTINROOM))
+                    self.fd_to_info[fd].socket.send(chr(method) + '\1' + chr(NOTINROOM))
             else:
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(HAVENONAME))
         elif method == SENDTO:
@@ -240,7 +232,7 @@ class Server(threading.Thread):
                 return
             uname = data[start: end]
             if uname in self.user_to_fd:
-                self.fd_to_info[self.user_to_fd[uname]].message_queues.put(
+                self.fd_to_info[self.user_to_fd[uname]].message_queues.put(chr(method) + '\1' +
                     self.fd_to_info[fd].user.name + '\1' + data[end + 1: len(data)])
             # elif self.access.have_id(uname):
             #     self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(UNLINE))
@@ -291,8 +283,11 @@ class Server(threading.Thread):
             status = self.access.is_legal(uname, passwd)
             if status == 1:
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(SUCCESS))
-                self.fd_to_info[fd].user = user.User(uname, status)
                 self.user_to_fd[uname] = fd
+                self.fd_to_info[fd].user = user.User(uname, status)
+                # self.logger.debug('User: [' + uname + '] login success')
+                print('User: [' + uname + '] login success')
+                self.logger.info('User: [' + uname + '] login success')
             elif status == -1:
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(HAVENONAME))
             else:
@@ -307,6 +302,13 @@ class Server(threading.Thread):
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(FAILED))
                 return
             room = data[start: end]
+            if room in self.rooms:
+                self.rooms[room].add_member(self.fd_to_info[fd].user.uid)
+                self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(SUCCESS))
+            else:
+                # self.logger.warn('No room ' + str(room))
+                self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(NOTINROOM))
+
         elif method == CREATEROOM:
             start = end + 1
             end = data.find(u'\1', start)
@@ -320,6 +322,7 @@ class Server(threading.Thread):
             if self.access.create_room(room, room, self.fd_to_info[fd].user.uid):
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(SUCCESS))
                 self.rooms.add(room, room, self.fd_to_info[fd].user.uid)
+                self.rooms[room].add_member(self.fd_to_info[fd].user.uid)
             else:
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(HAVENAME))
 
@@ -337,8 +340,12 @@ class Server(threading.Thread):
         self.fd_to_info[fd].socket.close()
         if self.fd_to_info[fd].user:
             name = self.fd_to_info[fd].user.uid
+            for room in self.rooms:
+                self.rooms[room].remove(name)
             self.fd_to_info[fd].user.logout()
             del self.user_to_fd[name]
+            # self.logger.debug('User [' + name + '] logout success!')
+            print('User [' + name + '] logout success!')
         del self.fd_to_info[fd]
 
 
