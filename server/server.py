@@ -219,7 +219,8 @@ class Server(threading.Thread):
             return
         start = end + 1
         if method == SENDALL:
-            self.hall_message_queue.put(chr(method) + '\1' + self.fd_to_info[fd].user.name + '\1' + data[start: len(data)])
+            self.hall_message_queue.put(
+                chr(method) + '\1' + self.fd_to_info[fd].user.name + '\1' + data[start: len(data)])
         elif method == SENDROOM:
             end = data.find(u'\1', start)
             if end == -1:
@@ -232,7 +233,9 @@ class Server(threading.Thread):
             if room in self.rooms:
                 if self.fd_to_info[fd].user.uid in self.rooms[room]:
                     # self.rooms_message_queues[room].put(self.fd_to_info[fd].user.name + '\1' + data[end + 1: len(data)])
-                    self.rooms[room].add_message(chr(method) + '\1' + room + '\1' + self.fd_to_info[fd].user.name + '\1' + data[end + 1: len(data)])
+                    self.rooms[room].add_message(
+                        chr(method) + '\1' + room + '\1' + self.fd_to_info[fd].user.name + '\1' + data[
+                                                                                                  end + 1: len(data)])
                 else:
                     self.fd_to_info[fd].socket.send(chr(method) + '\1' + chr(NOTINROOM))
             else:
@@ -248,7 +251,9 @@ class Server(threading.Thread):
             uname = data[start: end]
             if uname in self.user_to_fd:
                 self.fd_to_info[self.user_to_fd[uname]].message_queues.put(chr(method) + '\1' +
-                    self.fd_to_info[fd].user.name + '\1' + data[end + 1: len(data)])
+                                                                           self.fd_to_info[fd].user.name + '\1' + data[
+                                                                                                                  end + 1: len(
+                                                                                                                      data)])
             # elif self.access.have_id(uname):
             #     self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(UNLINE))
             else:
@@ -375,7 +380,6 @@ class Server(threading.Thread):
                         if len(nums) != len(self.game21) or sorted(nums) != sorted(self.game21):
                             self.fd_to_info[fd].message_queues.put(chr(method) + u'\1' + chr(FAILED))
                         else:
-                            result = 21
                             if result == 21:
                                 self.game21 = []
                                 self.game_result = {}
@@ -455,18 +459,13 @@ class Server(threading.Thread):
 
     @staticmethod
     def compute_time():
-        # now = time.localtime(time.time())
-        # if now.tm_min + now.tm_sec / 60.0 < 30:
-        #     ret = (30 - now.tm_min) * 60 - now.tm.sec
-        # else:
-        #     ret = (60 - now.tm_min) * 60 - now.tm_sec
-        min = 29
-        sec = 0
-        if min + sec / 60.0 < 30:
-            ret = (30 - min) * 60 - sec
+        now = time.localtime(time.time())
+        if now.tm_min + now.tm_sec / 60.0 < 30:
+            ret = (30 - now.tm_min) * 60 - now.tm.sec
         else:
-            ret = (60 - min) * 60 - sec
+            ret = (60 - now.tm_min) * 60 - now.tm_sec
         return ret
+
 
 def main():
     server = Server()

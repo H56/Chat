@@ -77,3 +77,6 @@
 2016-01-07 21:00:46,339-Chat-Server-WARNING-[u'netease3', u'netease4'] join in the room room2 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
 2016-01-07 21:02:59,831-Chat-Server-WARNING-[u'netease2', u'netease3', u'netease4'] join in the room room1 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
 2016-01-07 21:02:59,831-Chat-Server-WARNING-[u'netease3', u'netease4'] join in the room room2 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
+2016-01-07 21:16:22,282-Chat-Server-WARNING-[u'netease2', u'netease3', u'netease4'] join in the room room1 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
+2016-01-07 21:16:22,282-Chat-Server-WARNING-[u'netease3', u'netease4'] join in the room room2 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
+2016-01-07 21:17:04,969-Chat-Server-WARNING-netease5 join in the room room3 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
