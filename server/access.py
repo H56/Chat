@@ -1,27 +1,17 @@
 import hashlib
-import logging
 import sqlite3
-# from singleton import *
+from logger import Logger
+from singleton import *
 
 __author__ = 'HuPeng'
 
 
-# @singleton
+@singleton
 class AccessDao:
 
     def __init__(self):
-        self.logger = logging.getLogger('Chat-Server-Access')
-        log_file = logging.FileHandler('Chat-Server-Access.log')
-        log_file.setLevel(logging.DEBUG)
-        log_stream = logging.StreamHandler()
-        log_stream.setLevel(logging.ERROR)
-        formatter = logging.Formatter('%(asctime)s-%(name)s-%(levelname)s-%(messages)s')
-        log_stream.setFormatter(formatter)
-        log_file.setFormatter(formatter)
-        self.logger.addHandler(log_file)
-        self.logger.addHandler(log_stream)
-
-        self.conn = sqlite3.connect("Chat_Hu.db")
+        self.logger = Logger()
+        self.conn = sqlite3.connect("Chat_Hu.db", check_same_thread=False)
         self.test_table()
         print('init')
 
@@ -62,6 +52,42 @@ class AccessDao:
     def get_rooms(self):
         sql = "SELECT * FROM room_info"
         return self.select_sql(sql, ())
+
+    def get_roommates(self, room):
+        sql = "SELECT uid FROM room_user WHERE rid = ?"
+        data = (room, )
+        result = self.select_sql(sql, data)
+        ret = []
+        for r in result:
+            ret.append(r[0])
+        return ret
+
+    def add_roommate(self, room, users):
+        cursor = self.conn.cursor()
+        sql = "INSERT INTO room_user(rid, uid) VALUES(?, ?)"
+
+        if type(users) is list:
+            for user in users:
+                data = (room, user)
+                cursor.execute(sql, data)
+        else:
+            data = (room, users)
+            cursor.execute(sql, data)
+        self.conn.commit()
+        cursor.close()
+
+    def remove_roommate(self, room, users):
+        cursor = self.conn.cursor()
+        sql = "DELETE FROM room_user WHERE rid = ? AND uid = ?"
+        if type(users) is list:
+            for user in users:
+                data = (room, user)
+                cursor.execute(sql, data)
+        else:
+            data = (room, users)
+            cursor.execute(sql, data)
+        self.conn.commit()
+        cursor.close()
 
     def logout(self, uid, data):
         sql = '''INSERT INTO logging_info(uid, login, logout) VALUES(?, ?, ?)'''
@@ -124,6 +150,10 @@ class AccessDao:
         # room info
         self._test('room_info', 'CREATE TABLE room_info(rid VARCHAR(30) PRIMARY KEY, rname VARCHAR(100), '
                                 'owner_uid VARCHAR(30))')
+
+        # room <-> user
+        self._test('room_user', 'CREATE TABLE room_user(rid VARCHAR(30), uid VARCHAR (30), '
+                                'PRIMARY KEY (rid, uid))')
 
     def _test(self, table, exe):
         try:

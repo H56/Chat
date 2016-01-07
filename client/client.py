@@ -14,11 +14,15 @@ BUFFERSIZE = 1024
 REGISTER = 10
 LOGIN = 11
 LOGOUT = 12
+SERVERMESSAGE = 13
 
 SENDALL = 20
 SENDTO = 21
 SENDROOM = 22
 CREATEROOM = 23
+LEAVEROOM = 24
+GAME21 = 25
+GAME21WINNER = 26
 
 ENTERHALL = 30
 ENTERROOM = 31
@@ -32,12 +36,14 @@ FAILED = 52
 SUCCESS = 53
 HAVENONAME = 54
 WRONGPASSWD = 55
+UNLINE = 56
 NOTINROOM = 57
 LOGINED = 58
+GAMEOVER = 59
 
 
 class Client(threading.Thread):
-    def __init__(self, server_address=('localhost', 21313)):
+    def __init__(self, server_address=('localhost', 2131)):
         """
         :type server_port: int
         :type server_address: str
@@ -48,7 +54,7 @@ class Client(threading.Thread):
         log_file.setLevel(logging.DEBUG)
         log_stream = logging.StreamHandler()
         log_stream.setLevel(logging.ERROR)
-        formatter = logging.Formatter('%(asctime)s-%(name)s-%(levelname)s-%(messages)s')
+        formatter = logging.Formatter('%(asctime)s-%(name)s-%(levelname)s-%(message)s')
         log_stream.setFormatter(formatter)
         log_file.setFormatter(formatter)
         self.logger.addHandler(log_file)
@@ -100,18 +106,30 @@ class Client(threading.Thread):
                     room, end = self.get_word(msg, end)
                     if room == 'hall':
                         self.send_to_server(ENTERHALL)
-                    elif room != '':
+                    elif room:
                         self.send_to_server(ENTERROOM, room)
                     else:
                         print('Room name can\' be blank.\r\n')
                 elif operation == 'createroom':
                     room, end = self.get_word(msg, end)
-                    if room != '':
+                    if room:
                         self.send_to_server(CREATEROOM, room)
+                    else:
+                        print("Room name can't be blank!\r\n")
+                elif operation == 'leave':
+                    room, end = self.get_word(msg, end)
+                    if room:
+                        self.send_to_server(LEAVEROOM, room)
                     else:
                         print("Room name can't be blank!\r\n")
                 elif operation == 'close':
                     self.shut()
+                elif operation == 'game':
+                    answer = msg[end:]
+                    if answer:
+                        self.send_to_server(SERVERMESSAGE, chr(GAME21), answer)
+                    else:
+                        print("answer can't be blan!\r\n")
                 elif operation == 'help':
                     self.help()
                 elif isinstance(operation, str):
@@ -171,8 +189,8 @@ class Client(threading.Thread):
             self.logger.error(u'''server's operation error!''')
             return
         operation = ord(data[start: end])
+        start = end + 1
         if operation == REGISTER:
-            start = end + 1
             end = data.find(u'\1', start)
             if end == -1:
                 end = len(data)
@@ -196,7 +214,6 @@ class Client(threading.Thread):
                 print('Unknown reason made the register failed, please re-register!\r\n')
                 self.register(0)
         elif operation == LOGIN:
-            start = end + 1
             end = data.find(u'\1', start)
             if end == -1:
                 end = len(data)
@@ -206,7 +223,7 @@ class Client(threading.Thread):
             status = ord(data[start: end])
             if status == SUCCESS:
                 print('Congratulation! login is successful!\r\n')
-                print('Press blank key to input data!\r\n')
+                print('Press space bar to input data!\r\n')
                 # -----------input thread-----------
                 # self.starter = thread.start_new_thread(self.timer_starter, (self, ))
                 self.show()
@@ -225,7 +242,6 @@ class Client(threading.Thread):
                 print('Unknown reason made the register failed, please re-login!\r\n')
                 self.login()
         elif operation == SENDALL:
-            start = end + 1
             end = data.find(u'\1', start)
             if end == -1:
                 end = len(data)
@@ -235,7 +251,6 @@ class Client(threading.Thread):
             user = data[start: end]
             self.message_queue.put('[HALL] ' + user + ' said: ' + data[end + 1: len(data)] + '\r\n')
         elif operation == SENDROOM:
-            start = end + 1
             end = data.find(u'\1', start)
             if end == -1:
                 end = len(data)
@@ -245,11 +260,11 @@ class Client(threading.Thread):
             if end == len(data):
                 status = ord(data[start: end])
                 if NOTINROOM == status:
-                    print('You are not in the room!\r\n')
+                    self.message_queue.put('You are not in the room!\r\n')
                 elif HAVENONAME == status:
-                    print('Have no the room!\r\n')
+                    self.message_queue.put('Have no the room!\r\n')
                 else:
-                    print('Unknown error\r\n!')
+                    self.message_queue.put('Unknown error\r\n!')
             else:
                 room = data[start: end]
                 start = end + 1
@@ -262,7 +277,6 @@ class Client(threading.Thread):
                 user = data[start: end]
                 self.message_queue.put('[ROOM: ' + room + '] ' + user + ' said: ' + data[end + 1: len(data)] + u'\r\n')
         elif operation == SENDTO:
-            start = end + 1
             end = data.find(u'\1', start)
             if end == -1:
                 end = len(data)
@@ -272,12 +286,11 @@ class Client(threading.Thread):
             if end == len(data):
                 status = ord(data[start: end])
                 if status == HAVENONAME:
-                    print('He is not online or no the user!\r\n')
+                    self.message_queue.put('He is not online or no the user!\r\n')
             else:
                 user = data[start: end]
-                self.message_queue.put('[' + user + ']' + ' said: ' + data[end + 1: len(data)] + u'\r\n')
-        elif operation == CREATEROOM:
-            start = end + 1
+                self.message_queue.put('[' + user + ']' + ' said to me: ' + data[end + 1: len(data)] + u'\r\n')
+        elif operation in [CREATEROOM, LEAVEROOM]:
             end = data.find(u'\1', start)
             if end == -1:
                 end = len(data)
@@ -286,15 +299,19 @@ class Client(threading.Thread):
                 return
             status = ord(data[start: end])
             if SUCCESS == status:
-                print('Congratulation, create room success!\r\n')
-                print("You can use 'enter room-name' and 'sendroom room-name' to join in the room and"
+                if operation == LEAVEROOM:
+                    pself.message_queue.put('Leave the room success.\r\n')
+                    return
+                self.message_queue.put('Congratulation, create room success!\r\n')
+                self.message_queue.put("You can use 'enter room-name' and 'sendroom room-name' to join in the room and"
                       " send room messages.\r\n")
             elif HAVENAME == status:
-                print('The room name has been used.\r\n')
+                self.message_queue.put('The room name has been used.\r\n')
+            elif NOTINROOM == status:
+                self.message_queue.put('You are not in the room.\r\n')
             else:
-                print('Unknown errors make it failed!\r\n')
+                self.message_queue.put('Unknown errors make it failed!\r\n')
         elif operation == ENTERROOM:
-            start = end + 1
             end = data.find(u'\1', start)
             if end == -1:
                 end = len(data)
@@ -303,10 +320,40 @@ class Client(threading.Thread):
                 return
             status = ord(data[start: end])
             if SUCCESS == status:
-                print('Congratulation, enter the room success!\r\n')
+                self.message_queue.put('Congratulation, enter the room success!\r\n')
             elif NOTINROOM == status:
-                print('The room is not exist or you are not in the room!\r\n')
+                self.message_queue.put('The room is not exist or you are not in the room!\r\n')
+            else:
+                self.message_queue.put('Failed: maybe you have been in the room.\r\n')
 
+        elif operation == SERVERMESSAGE:
+            status, end = self.get_next(data, start)
+            if status == -1:
+                self.logger.error("SERVERMESSAGE format error")
+            else:
+                status = ord(status)
+                start = end + 1
+                if status == GAME21:
+                    self.message_queue.put("Game 21 started. Please enter space bar to use command (game) "
+                          "to send your answer to server. \r\n")
+                    game_show = ''
+                    while start < len(data):
+                        end = data.find('\1', start)
+                        if end == -1:
+                            end = len(data)
+                        game_show += ' ' + data[start: end]
+                        start = end + 1
+                    self.message_queue.put("<Game 21>:" + game_show + '\r\n')
+                elif status == GAMEOVER:
+                    self.message_queue.put("The game is over, please play at next time.\r\n")
+                elif status == GAME21WINNER:
+                    usr, end = self.get_next(data, start)
+                    if usr == self.UserName:
+                        self.message_queue.put("[SERVER] Congratulations! You are the winner!\r\n")
+                    elif usr != -1:
+                        self.message_queue.put("[SERVER] " + usr + " won the game!\r\n")
+                    else:
+                        self.message_queue.put("[SERVER] NOBODY WON THE GAME!\r\n")
         elif operation == LOGOUT:
             pass
 
@@ -346,6 +393,15 @@ class Client(threading.Thread):
             print('Thank your trust!')
             self.shut_status = True
 
+    def get_next(self, data, start):
+        end = data.find(u'\1', start)
+        if end == -1:
+            end = len(data)
+        if start == end:
+            self.logger.error('Wrong format!')
+            return -1, end
+        return data[start: end], end
+
     @staticmethod
     def help():
         print('This is the simple help.\r\n')
@@ -354,6 +410,7 @@ class Client(threading.Thread):
         print("sendto user-name messages: send your messages to the user\r\n")
         print("createroom room-name: create the room named room-name\r\n")
         print("enter room-name: enter the room, and you'll receive the messages from the roommates\r\n")
+        print("game answer: send the game 21 answer to server.\r\n")
 
     @staticmethod
     def timer_starter(client):

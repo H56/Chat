@@ -1,13 +1,15 @@
-import hashlib
+import random
 import socket
 import select
 import Queue
-import logging
 import errno
 import threading
+import time
 import access
 import rooms
 import user
+from calculator import calculator
+from logger import Logger
 
 __author__ = 'HuPeng'
 
@@ -16,11 +18,15 @@ BUFFERSIZE = 1024
 REGISTER = 10
 LOGIN = 11
 LOGOUT = 12
+SERVERMESSAGE = 13
 
 SENDALL = 20
 SENDTO = 21
 SENDROOM = 22
 CREATEROOM = 23
+LEAVEROOM = 24
+GAME21 = 25
+GAME21WINNER = 26
 
 ENTERHALL = 30
 ENTERROOM = 31
@@ -37,6 +43,7 @@ WRONGPASSWD = 55
 UNLINE = 56
 NOTINROOM = 57
 LOGINED = 58
+GAMEOVER = 59
 
 Hall_message = Queue.Queue()
 
@@ -51,19 +58,9 @@ class Server(threading.Thread):
             self.message_queues = Queue.Queue()
             self.rooms = []
 
-    def __init__(self, addr='localhost', port=21313, timeout=-1):
+    def __init__(self, addr='localhost', port=2131, timeout=-1):
         threading.Thread.__init__(self)
-        self.logger = logging.getLogger('Chat-Server')
-        log_file = logging.FileHandler('Chat-Server.log')
-        log_file.setLevel(logging.DEBUG)
-        log_stream = logging.StreamHandler()
-        log_stream.setLevel(logging.ERROR)
-        formatter = logging.Formatter('%(asctime)s-%(name)s-%(levelname)s-%(messages)s')
-        log_stream.setFormatter(formatter)
-        log_file.setFormatter(formatter)
-        self.logger.addHandler(log_file)
-        self.logger.addHandler(log_stream)
-
+        self.logger = Logger()
         self.address = (addr, port)
         self.timeout = timeout
         self.epoll = None
@@ -72,10 +69,13 @@ class Server(threading.Thread):
         self.user_to_fd = {}
         self.hall_message_queue = Queue.Queue()
         # self.rooms_message_queues = {}
-        self.hall_message = [0, []]
-        self.rooms_message = {}
         self.rooms = rooms.Rooms()
         self.timer = None
+        self.game_timer = None
+        self.game21 = None
+        self.game_result = {}
+        self.evaluation = None
+        self.listen_socket = None
 
     def run(self):
         self.access = access.AccessDao()
@@ -97,6 +97,8 @@ class Server(threading.Thread):
         self.fd_to_info = {self.listen_socket.fileno(): self.Info(self.listen_socket, self.address), }
         self.timer = threading.Timer(0.5, self.send_timer, ())
         self.timer.start()
+        self.game_timer = threading.Timer(self.compute_time(), self.game21_timer, ())
+        self.game_timer.start()
         while True:
             events = self.epoll.poll(self.timeout)
             if not events:
@@ -187,11 +189,16 @@ class Server(threading.Thread):
             msgs = self.rooms[room].get_all_messages()
             if len(msgs) > 0:
                 for member in self.rooms[room]:
-                    fd = self.user_to_fd[member]
-                    if not is_hall:
-                        fd_set.add(fd)
-                    for msg in msgs:
-                        self.fd_to_info[fd].message_queues.put(msg)
+                    try:
+                        fd = self.user_to_fd[member]
+                    except KeyError:
+                        # not in the online users
+                        pass
+                    else:
+                        if not is_hall:
+                            fd_set.add(fd)
+                        for msg in msgs:
+                            self.fd_to_info[fd].message_queues.put(msg)
 
         if not is_hall:
             for fd in fd_set:
@@ -210,10 +217,10 @@ class Server(threading.Thread):
         except Exception as e:
             self.logger.error('Wrong format: ' + str(e))
             return
+        start = end + 1
         if method == SENDALL:
-            self.hall_message_queue.put(chr(method) + '\1' + self.fd_to_info[fd].user.name + '\1' + data[end + 1: len(data)])
+            self.hall_message_queue.put(chr(method) + '\1' + self.fd_to_info[fd].user.name + '\1' + data[start: len(data)])
         elif method == SENDROOM:
-            start = end + 1
             end = data.find(u'\1', start)
             if end == -1:
                 end = len(data)
@@ -231,7 +238,6 @@ class Server(threading.Thread):
             else:
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(HAVENONAME))
         elif method == SENDTO:
-            start = end + 1
             end = data.find(u'\1', start)
             if end == -1:
                 end = len(data)
@@ -248,7 +254,6 @@ class Server(threading.Thread):
             else:
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(HAVENONAME))
         elif method == REGISTER:
-            start = end + 1
             end = data.find(u'\1', start)
             if end == -1:
                 end = len(data)
@@ -279,7 +284,6 @@ class Server(threading.Thread):
                 else:
                     self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(NAMEOK))
         elif method == LOGIN:
-            start = end + 1
             end = data.find(u'\1', start)
             if end == -1:
                 end = len(data)
@@ -304,8 +308,8 @@ class Server(threading.Thread):
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(HAVENONAME))
             else:
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(WRONGPASSWD))
+
         elif method == ENTERROOM:
-            start = end + 1
             end = data.find(u'\1', start)
             if end == -1:
                 end = len(data)
@@ -315,14 +319,16 @@ class Server(threading.Thread):
                 return
             room = data[start: end]
             if room in self.rooms:
-                self.rooms[room].add_member(self.fd_to_info[fd].user.uid)
-                self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(SUCCESS))
+                ok = self.rooms[room].add_member(self.fd_to_info[fd].user.uid)
+                if ok:
+                    self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(SUCCESS))
+                else:
+                    self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(FAILED))
             else:
                 # self.logger.warn('No room ' + str(room))
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(NOTINROOM))
 
-        elif method == CREATEROOM:
-            start = end + 1
+        elif method == LEAVEROOM:
             end = data.find(u'\1', start)
             if end == -1:
                 end = len(data)
@@ -331,18 +337,95 @@ class Server(threading.Thread):
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(FAILED))
                 return
             room = data[start: end]
+            if room in self.rooms:
+                self.rooms[room].remove(self.fd_to_info[fd].user.uid)
+                self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(SUCCESS))
+            else:
+                self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(NOTINROOM))
+
+        elif method == CREATEROOM:
+            room, end = self.get_next(data, start, method, fd)
+            if room == -1:
+                return
             if self.access.create_room(room, room, self.fd_to_info[fd].user.uid):
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(SUCCESS))
                 self.rooms.add(room, room, self.fd_to_info[fd].user.uid)
                 self.rooms[room].add_member(self.fd_to_info[fd].user.uid)
             else:
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(HAVENAME))
+        elif method == SERVERMESSAGE:
+            option, end = self.get_next(data, start, method, fd)
+            if option != -1:
+                option = ord(option)
+                if option == GAME21:
+                    if not self.game21:
+                        self.fd_to_info[fd].message_queues.put(chr(method) + u'\1' + chr(GAMEOVER))
+                        return
+                    start = end + 1
+                    solution = data[start:]
+                    if len(solution) > 20:
+                        self.fd_to_info[fd].message_queues.put(chr(method) + u'\1' + chr(FAILED))
+                        return
+                    nums = []
+                    try:
+                        result = calculator(solution, nums_list=nums)
+                    except Exception as e:
+                        self.fd_to_info[fd].message_queues.put(chr(method) + u'\1' + chr(FAILED))
+                    else:
+                        if len(nums) != len(self.game21) or sorted(nums) != sorted(self.game21):
+                            self.fd_to_info[fd].message_queues.put(chr(method) + u'\1' + chr(FAILED))
+                        else:
+                            result = 21
+                            if result == 21:
+                                self.game21 = []
+                                self.game_result = {}
+                                self.evaluation.cancel()
+                                self.send_winner(self.fd_to_info[fd].user.uid)
+                            elif result not in self.game_result:
+                                self.game_result[result] = fd
 
         elif method == LOGOUT:
             # self.fd_to_info[fd].user.logout()
             # del self.user_to_fd[self.fd_to_info[fd].user.uid]
             # del self.fd_to_info[fd]
             pass
+
+    def game21_timer(self):
+        self.game21 = []
+        game21_str = ''
+        for i in range(0, 4):
+            self.game21.append(random.randint(1, 10))
+            game21_str += '\1' + str(self.game21[i])
+        for fd in self.fd_to_info:
+            if self.fd_to_info[fd].user:
+                self.fd_to_info[fd].message_queues.put(chr(SERVERMESSAGE) + u'\1' + chr(GAME21) + game21_str)
+                self.epoll.modify(fd, select.EPOLLET | select.EPOLLOUT)
+        self.evaluation = threading.Timer(15, self.evaluation21_timer, ())
+        self.evaluation.start()
+        self.game_timer = threading.Timer(self.compute_time(), self.game21_timer, ())
+        self.game_timer.start()
+
+    def evaluation21_timer(self):
+        self.game21 = []
+        if self.game_result:
+            max_index = max(self.game_result)
+            fd = self.game_result[max_index]
+            if fd in self.fd_to_info:
+                winner = self.fd_to_info[fd].user.uid
+            else:
+                winner = -1
+            self.game_result = {}
+        else:
+            winner = -1
+        self.send_winner(winner)
+
+    def send_winner(self, winner):
+        if winner == -1:
+            winner = ''
+        for fd in self.fd_to_info:
+            if self.fd_to_info[fd].user:
+                self.fd_to_info[fd].message_queues.put(chr(SERVERMESSAGE) + u'\1' + chr(GAME21WINNER) + '\1' + winner)
+                self.epoll.modify(fd, select.EPOLLET | select.EPOLLOUT)
 
     def __del__(self):
         self.epoll.close()
@@ -352,14 +435,38 @@ class Server(threading.Thread):
         self.fd_to_info[fd].socket.close()
         if self.fd_to_info[fd].user:
             name = self.fd_to_info[fd].user.uid
-            for room in self.rooms:
-                self.rooms[room].remove(name)
+            # for room in self.rooms:
+            #     self.rooms[room].remove(name)
             self.fd_to_info[fd].user.logout()
             del self.user_to_fd[name]
             # self.logger.debug('User [' + name + '] logout success!')
             print('User [' + name + '] logout success!')
         del self.fd_to_info[fd]
 
+    def get_next(self, data, start, method, fd):
+        end = data.find(u'\1', start)
+        if end == -1:
+            end = len(data)
+        if start == end:
+            self.logger.error('Wrong format!')
+            self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(FAILED))
+            return -1, end
+        return data[start: end], end
+
+    @staticmethod
+    def compute_time():
+        # now = time.localtime(time.time())
+        # if now.tm_min + now.tm_sec / 60.0 < 30:
+        #     ret = (30 - now.tm_min) * 60 - now.tm.sec
+        # else:
+        #     ret = (60 - now.tm_min) * 60 - now.tm_sec
+        min = 29
+        sec = 0
+        if min + sec / 60.0 < 30:
+            ret = (30 - min) * 60 - sec
+        else:
+            ret = (60 - min) * 60 - sec
+        return ret
 
 def main():
     server = Server()

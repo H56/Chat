@@ -1,6 +1,7 @@
 import Queue
 import threading
 import access
+from logger import Logger
 from singleton import *
 
 __author__ = 'hupeng'
@@ -17,6 +18,10 @@ class Rooms:
             # self.members.add(owner)
             self.mutex = threading.Lock()
             self.messages = Queue.Queue()
+            self.access = access.AccessDao()
+            self.logger = Logger()
+            members = self.access.get_roommates(rid)
+            self.add_member(members)
 
         def remove(self, member):
             try:
@@ -24,13 +29,26 @@ class Rooms:
                     self.members.remove(member)
             except KeyError:
                 pass
+            else:
+                self.access.remove_roommate(self.rid, member)
 
         def is_member(self, member):
             return member in self.members
 
         def add_member(self, member):
             with self.mutex:
-                self.members.add(member)
+                if type(member) is list:
+                    for m in member:
+                        self.members.add(m)
+                else:
+                    self.members.add(member)
+            try:
+                self.access.add_roommate(self.rid, member)
+            except Exception as e:
+                self.logger.warn(str(member) + ' join in the room ' + str(self.rid) + ' failed: ' + str(e))
+                return False
+            else:
+                return True
 
         def add_message(self, msg):
             self.messages.put(msg)
