@@ -80,3 +80,20 @@
 2016-01-07 21:16:22,282-Chat-Server-WARNING-[u'netease2', u'netease3', u'netease4'] join in the room room1 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
 2016-01-07 21:16:22,282-Chat-Server-WARNING-[u'netease3', u'netease4'] join in the room room2 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
 2016-01-07 21:17:04,969-Chat-Server-WARNING-netease5 join in the room room3 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
+2016-01-07 21:24:15,171-Chat-Server-WARNING-[u'netease2', u'netease3', u'netease4'] join in the room room1 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
+2016-01-07 21:24:15,172-Chat-Server-WARNING-[u'netease3', u'netease4'] join in the room room2 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
+2016-01-07 21:24:15,172-Chat-Server-WARNING-[u'netease5'] join in the room room3 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
+2016-01-07 21:24:15,174-Chat-Server-ERROR-socket error: [Errno 98] Address already in use
+2016-01-07 21:24:30,057-Chat-Server-WARNING-[u'netease2', u'netease3', u'netease4'] join in the room room1 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
+2016-01-07 21:24:30,058-Chat-Server-WARNING-[u'netease3', u'netease4'] join in the room room2 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
+2016-01-07 21:24:30,058-Chat-Server-WARNING-[u'netease5'] join in the room room3 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
+2016-01-07 21:24:39,335-Chat-Server-WARNING-[u'netease2', u'netease3', u'netease4'] join in the room room1 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
+2016-01-07 21:24:39,336-Chat-Server-WARNING-[u'netease3', u'netease4'] join in the room room2 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
+2016-01-07 21:24:39,337-Chat-Server-WARNING-[u'netease5'] join in the room room3 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
+2016-01-07 21:25:21,375-Chat-Server-WARNING-[u'netease2', u'netease3', u'netease4'] join in the room room1 failed: database is locked
+2016-01-07 21:25:21,376-Chat-Server-WARNING-[u'netease3', u'netease4'] join in the room room2 failed: database is locked
+2016-01-07 21:25:21,377-Chat-Server-WARNING-[u'netease5'] join in the room room3 failed: database is locked
+2016-01-07 21:25:21,379-Chat-Server-ERROR-socket error: [Errno 98] Address already in use
+2016-01-07 21:25:41,349-Chat-Server-WARNING-[u'netease2', u'netease3', u'netease4'] join in the room room1 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
+2016-01-07 21:25:41,349-Chat-Server-WARNING-[u'netease3', u'netease4'] join in the room room2 failed: UNIQUE constraint failed: room_user.rid, room_user.uid
+2016-01-07 21:25:41,350-Chat-Server-WARNING-[u'netease5'] join in the room room3 failed: UNIQUE constraint failed: room_user.rid, room_user.uid

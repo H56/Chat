@@ -466,7 +466,7 @@ class Server(threading.Thread):
     def compute_time():
         now = time.localtime(time.time())
         if now.tm_min + now.tm_sec / 60.0 < 30:
-            ret = (30 - now.tm_min) * 60 - now.tm.sec
+            ret = (30 - now.tm_min) * 60 - now.tm_sec
         else:
             ret = (60 - now.tm_min) * 60 - now.tm_sec
         return ret

@@ -300,7 +300,7 @@ class Client(threading.Thread):
             status = ord(data[start: end])
             if SUCCESS == status:
                 if operation == LEAVEROOM:
-                    pself.message_queue.put('Leave the room success.\r\n')
+                    self.message_queue.put('Leave the room success.\r\n')
                     return
                 self.message_queue.put('Congratulation, create room success!\r\n')
                 self.message_queue.put("You can use 'enter room-name' and 'sendroom room-name' to join in the room and"
