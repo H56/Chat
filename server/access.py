@@ -13,6 +13,7 @@ class AccessDao:
         self.logger = Logger()
         self.conn = sqlite3.connect("Chat_Hu.db", check_same_thread=False)
         self.test_table()
+        self.test_user()
         print('init')
 
     def is_legal(self, uid, upasswd):
@@ -136,12 +137,21 @@ class AccessDao:
         else:
             raise Exception('sql have no data')
 
+    def test_user(self):
+        sql_select = "SELECT * FROM chat_user WHERE uid = ?"
+        sql_insert = '''INSERT INTO chat_user(uid, uname, passwd) VALUES(?, ?, ?)'''
+        passwd = hashlib.sha1(hashlib.sha1("123").hexdigest()).hexdigest()
+        for i in range(1, 5):
+            data = ("netease" + str(i), )
+            if not self.select_sql(sql_select, data):
+                self.change_sql(sql_insert, ("netease" + str(i), "netease" + str(i), passwd))
+
+
+
     def test_table(self):
         # user
-        status = self._test('chat_user',
-                      '''CREATE TABLE chat_user(uid VARCHAR(30) PRIMARY KEY, uname VARCHAR(100), passwd CHAR(40))''')
-        if not status:
-            self.conn.execute("")
+        self._test('chat_user',
+                   '''CREATE TABLE chat_user(uid VARCHAR(30) PRIMARY KEY, uname VARCHAR(100), passwd CHAR(40))''')
 
         # login and logout info
         self._test('logging_info', '''CREATE TABLE logging_info(id INTEGER PRIMARY KEY, uid VARCHAR(30), '''
