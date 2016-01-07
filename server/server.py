@@ -218,9 +218,11 @@ class Server(threading.Thread):
             self.logger.error('Wrong format: ' + str(e))
             return
         start = end + 1
+        # hall message
         if method == SENDALL:
             self.hall_message_queue.put(
                 chr(method) + '\1' + self.fd_to_info[fd].user.name + '\1' + data[start: len(data)])
+        # room message
         elif method == SENDROOM:
             end = data.find(u'\1', start)
             if end == -1:
@@ -240,6 +242,7 @@ class Server(threading.Thread):
                     self.fd_to_info[fd].socket.send(chr(method) + '\1' + chr(NOTINROOM))
             else:
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(HAVENONAME))
+        # personal message
         elif method == SENDTO:
             end = data.find(u'\1', start)
             if end == -1:
@@ -250,14 +253,13 @@ class Server(threading.Thread):
                 return
             uname = data[start: end]
             if uname in self.user_to_fd:
-                self.fd_to_info[self.user_to_fd[uname]].message_queues.put(chr(method) + '\1' +
-                                                                           self.fd_to_info[fd].user.name + '\1' + data[
-                                                                                                                  end + 1: len(
-                                                                                                                      data)])
+                self.fd_to_info[self.user_to_fd[uname]].message_queues.put(
+                    chr(method) + '\1' + self.fd_to_info[fd].user.name + '\1' + data[end + 1: len(data)])
             # elif self.access.have_id(uname):
             #     self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(UNLINE))
             else:
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(HAVENONAME))
+        # register
         elif method == REGISTER:
             end = data.find(u'\1', start)
             if end == -1:
@@ -288,6 +290,7 @@ class Server(threading.Thread):
                     self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(HAVENAME))
                 else:
                     self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(NAMEOK))
+        # login
         elif method == LOGIN:
             end = data.find(u'\1', start)
             if end == -1:
@@ -313,7 +316,7 @@ class Server(threading.Thread):
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(HAVENONAME))
             else:
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(WRONGPASSWD))
-
+        # enter the room
         elif method == ENTERROOM:
             end = data.find(u'\1', start)
             if end == -1:
@@ -332,7 +335,7 @@ class Server(threading.Thread):
             else:
                 # self.logger.warn('No room ' + str(room))
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(NOTINROOM))
-
+        # leave room
         elif method == LEAVEROOM:
             end = data.find(u'\1', start)
             if end == -1:
@@ -347,7 +350,7 @@ class Server(threading.Thread):
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(SUCCESS))
             else:
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(NOTINROOM))
-
+        # create room
         elif method == CREATEROOM:
             room, end = self.get_next(data, start, method, fd)
             if room == -1:
@@ -358,11 +361,13 @@ class Server(threading.Thread):
                 self.rooms[room].add_member(self.fd_to_info[fd].user.uid)
             else:
                 self.fd_to_info[fd].socket.send(chr(method) + u'\1' + chr(HAVENAME))
+        # server message
         elif method == SERVERMESSAGE:
             option, end = self.get_next(data, start, method, fd)
             if option != -1:
                 option = ord(option)
                 if option == GAME21:
+                    # game
                     if not self.game21:
                         self.fd_to_info[fd].message_queues.put(chr(method) + u'\1' + chr(GAMEOVER))
                         return
@@ -387,7 +392,7 @@ class Server(threading.Thread):
                                 self.send_winner(self.fd_to_info[fd].user.uid)
                             elif result not in self.game_result:
                                 self.game_result[result] = fd
-
+        # logout future
         elif method == LOGOUT:
             # self.fd_to_info[fd].user.logout()
             # del self.user_to_fd[self.fd_to_info[fd].user.uid]
